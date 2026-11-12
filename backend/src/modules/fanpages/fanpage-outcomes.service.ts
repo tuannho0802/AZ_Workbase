@@ -119,7 +119,8 @@ export class FanpageOutcomesService {
         const moneyOn = customerScope != null && !depositsHidden && revenueIds.size > 0;
 
         const byUtm = customerScope ? await this.aggregateByUtm(user, customerScope, utmIds, from, to, moneyOn) : new Map<number, UtmAgg>();
-        const rows = buildPageOutcomes(pageIds, links, byUtm);
+        const byFanpage = customerScope ? await this.aggregateByFanpage(user, customerScope, pageIds, from, to, moneyOn) : new Map<number, UtmAgg>();
+        const rows = buildPageOutcomes(pageIds, links, byUtm, byFanpage);
         const chips = await this.utmLinks.chipsForPages(pageIds, user);
         const postCounts = await this.countPosts(pageIds, from, to);
 
@@ -146,11 +147,12 @@ export class FanpageOutcomesService {
 
         // ── Tổng DISTINCT độc lập + Chưa quy về Page ──
         const primaryUtmIds = [...new Set(links.filter((l) => l.isPrimary).map((l) => l.utmId))];
-        const totals = customerScope ? await this.distinctTotals(user, customerScope, primaryUtmIds, from, to) : { customers: 0, closed: 0 };
-        // Tổng tiền chỉ hiện khi MỌI Page chính trong tập đều được xem tiền (tránh suy ra số Page bị ẩn).
-        const primaryPageIds = [...new Set(links.filter((l) => l.isPrimary).map((l) => l.fanpageId))];
-        const totalMoneyOk = moneyOn && primaryPageIds.every((id) => revenueIds.has(id));
-        const totalDeposit = totalMoneyOk && customerScope ? await this.distinctDeposit(user, customerScope, primaryUtmIds, from, to) : undefined;
+        const totals = customerScope ? await this.distinctTotals(user, customerScope, pageIds, primaryUtmIds, from, to) : { customers: 0, closed: 0 };
+        // Tổng tiền chỉ hiện khi MỌI Page được ghi công (Page chính của UTM + Page có Lead trực tiếp) đều được xem tiền (tránh suy ra số Page bị ẩn).
+        const creditedPageIds = [...new Set([...links.filter((l) => l.isPrimary).map((l) => l.fanpageId), ...byFanpage.keys()])];
+        const totalMoneyOk = moneyOn && creditedPageIds.every((id) => revenueIds.has(id));
+        const totalDeposit =
+            totalMoneyOk && customerScope ? await this.distinctDeposit(user, customerScope, pageIds, primaryUtmIds, from, to) : undefined;
 
         const broad = statsScope === 'all' || statsScope === 'department';
         const unassigned = broad && customerScope ? await this.unassignedTotals(user, customerScope, from, to) : null;
@@ -185,7 +187,16 @@ export class FanpageOutcomesService {
 
         const result = await this.utmCustomers.listForUtms(
             utmIds,
-            { from, to, status: q.status, search: q.search, page: q.page, limit: q.limit },
+            {
+                from,
+                to,
+                status: q.status,
+                search: q.search,
+                page: q.page,
+                limit: q.limit,
+                // GĐ5b: danh sách khi bấm số PHẢI cùng tập khách với số đã hiện (ưu tiên `fanpage_id`, 15.3).
+                credit: q.kind === 'primary' ? { mode: 'primary', fanpageId: q.fanpageId } : { mode: 'participating' },
+            },
             user,
             customerScope,
         );
@@ -265,6 +276,7 @@ export class FanpageOutcomesService {
                 .addSelect('COUNT(*)', 'cnt')
                 .addSelect("SUM(CASE WHEN customer.status = 'closed' THEN 1 ELSE 0 END)", 'closed')
                 .where('customer.deletedAt IS NULL')
+                .andWhere('customer.fanpageId IS NULL') // GĐ5b: khách có fanpage_id đã ghi công trực tiếp cho Page (15.3)
                 .andWhere('customer.utmId IN (:...ids)', { ids })
                 .andWhere('customer.inputDate >= :from AND customer.inputDate <= :to', { from, to })
                 .groupBy('customer.utmId');
@@ -282,6 +294,7 @@ export class FanpageOutcomesService {
                 .select('customer.utmId', 'utmId')
                 .addSelect('SUM(dep.amount)', 'total')
                 .where('customer.deletedAt IS NULL')
+                .andWhere('customer.fanpageId IS NULL')
                 .andWhere('customer.utmId IN (:...ids)', { ids })
                 .andWhere('dep.depositDate >= :from AND dep.depositDate <= :to', { from, to })
                 .groupBy('customer.utmId');
@@ -291,38 +304,123 @@ export class FanpageOutcomesService {
         return out;
     }
 
-    /** Tổng khách DISTINCT trên các UTM có Page chính trong phạm vi - đếm RIÊNG, không cộng các dòng Page (R4). */
-    private async distinctTotals(user: FanpageCaller, customerScope: string, utmIds: number[], from: string, to: string): Promise<{ customers: number; closed: number }> {
+    /** GĐ5b: khách (theo `input_date`) + tiền (theo `deposit_date`) ghi công TRỰC TIẾP cho Page (`fanpage_id`), đã áp phạm vi `customers.view`. */
+    private async aggregateByFanpage(
+        user: FanpageCaller,
+        customerScope: string,
+        pageIds: number[],
+        from: string,
+        to: string,
+        withMoney: boolean,
+    ): Promise<Map<number, UtmAgg>> {
+        const out = new Map<number, UtmAgg>();
+        const get = (id: number): UtmAgg => {
+            let a = out.get(id);
+            if (!a) {
+                a = { customers: 0, closed: 0, deposit: 0 };
+                out.set(id, a);
+            }
+            return a;
+        };
+        for (const ids of chunk(pageIds, FANPAGE_BATCH_SIZE)) {
+            if (ids.length === 0) continue;
+            const qb = this.customerRepo
+                .createQueryBuilder('customer')
+                .select('customer.fanpageId', 'fanpageId')
+                .addSelect('COUNT(*)', 'cnt')
+                .addSelect("SUM(CASE WHEN customer.status = 'closed' THEN 1 ELSE 0 END)", 'closed')
+                .where('customer.deletedAt IS NULL')
+                .andWhere('customer.fanpageId IN (:...ids)', { ids })
+                .andWhere('customer.inputDate >= :from AND customer.inputDate <= :to', { from, to })
+                .groupBy('customer.fanpageId');
+            CustomerAccessHelper.applyViewFilter(qb, user.id, user.role, customerScope);
+            for (const r of await qb.getRawMany()) {
+                const a = get(Number(r.fanpageId));
+                a.customers = Number(r.cnt);
+                a.closed = Number(r.closed);
+            }
+
+            if (!withMoney) continue;
+            const dq = this.depositRepo
+                .createQueryBuilder('dep')
+                .innerJoin(Customer, 'customer', 'customer.id = dep.customerId')
+                .select('customer.fanpageId', 'fanpageId')
+                .addSelect('SUM(dep.amount)', 'total')
+                .where('customer.deletedAt IS NULL')
+                .andWhere('customer.fanpageId IN (:...ids)', { ids })
+                .andWhere('dep.depositDate >= :from AND dep.depositDate <= :to', { from, to })
+                .groupBy('customer.fanpageId');
+            CustomerAccessHelper.applyViewFilter(dq, user.id, user.role, customerScope);
+            for (const r of await dq.getRawMany()) get(Number(r.fanpageId)).deposit = Number(r.total ?? 0);
+        }
+        return out;
+    }
+
+    /**
+     * Tổng khách DISTINCT được ghi công trong phạm vi - đếm RIÊNG, không cộng các dòng Page (R4). Gồm 2 phần RỜI NHAU (nên cộng được):
+     *  (a) khách có `fanpage_id` thuộc `pageIds`; (b) khách `fanpage_id` NULL có UTM mà Page chính nằm trong phạm vi (`utmIds`).
+     */
+    private async distinctTotals(
+        user: FanpageCaller,
+        customerScope: string,
+        pageIds: number[],
+        utmIds: number[],
+        from: string,
+        to: string,
+    ): Promise<{ customers: number; closed: number }> {
         let customers = 0;
         let closed = 0;
-        for (const ids of chunk(utmIds, FANPAGE_BATCH_SIZE)) {
+        const run = async (apply: (qb: ReturnType<Repository<Customer>['createQueryBuilder']>) => void) => {
             const qb = this.customerRepo
                 .createQueryBuilder('customer')
                 .select('COUNT(DISTINCT customer.id)', 'cnt')
                 .addSelect("COUNT(DISTINCT CASE WHEN customer.status = 'closed' THEN customer.id END)", 'closed')
                 .where('customer.deletedAt IS NULL')
-                .andWhere('customer.utmId IN (:...ids)', { ids })
                 .andWhere('customer.inputDate >= :from AND customer.inputDate <= :to', { from, to });
+            apply(qb);
             CustomerAccessHelper.applyViewFilter(qb, user.id, user.role, customerScope);
             const r = await qb.getRawOne();
             customers += Number(r?.cnt ?? 0);
             closed += Number(r?.closed ?? 0);
+        };
+        for (const ids of chunk(pageIds, FANPAGE_BATCH_SIZE)) {
+            if (ids.length === 0) continue;
+            await run((qb) => qb.andWhere('customer.fanpageId IN (:...ids)', { ids }));
+        }
+        for (const ids of chunk(utmIds, FANPAGE_BATCH_SIZE)) {
+            if (ids.length === 0) continue;
+            await run((qb) => qb.andWhere('customer.fanpageId IS NULL').andWhere('customer.utmId IN (:...ids)', { ids }));
         }
         return { customers, closed };
     }
 
-    private async distinctDeposit(user: FanpageCaller, customerScope: string, utmIds: number[], from: string, to: string): Promise<number> {
+    private async distinctDeposit(
+        user: FanpageCaller,
+        customerScope: string,
+        pageIds: number[],
+        utmIds: number[],
+        from: string,
+        to: string,
+    ): Promise<number> {
         let total = 0;
-        for (const ids of chunk(utmIds, FANPAGE_BATCH_SIZE)) {
+        const run = async (apply: (qb: ReturnType<Repository<Deposit>['createQueryBuilder']>) => void) => {
             const qb = this.depositRepo
                 .createQueryBuilder('dep')
                 .innerJoin(Customer, 'customer', 'customer.id = dep.customerId')
                 .select('SUM(dep.amount)', 'total')
                 .where('customer.deletedAt IS NULL')
-                .andWhere('customer.utmId IN (:...ids)', { ids })
                 .andWhere('dep.depositDate >= :from AND dep.depositDate <= :to', { from, to });
+            apply(qb);
             CustomerAccessHelper.applyViewFilter(qb, user.id, user.role, customerScope);
             total += Number((await qb.getRawOne())?.total ?? 0);
+        };
+        for (const ids of chunk(pageIds, FANPAGE_BATCH_SIZE)) {
+            if (ids.length === 0) continue;
+            await run((qb) => qb.andWhere('customer.fanpageId IN (:...ids)', { ids }));
+        }
+        for (const ids of chunk(utmIds, FANPAGE_BATCH_SIZE)) {
+            if (ids.length === 0) continue;
+            await run((qb) => qb.andWhere('customer.fanpageId IS NULL').andWhere('customer.utmId IN (:...ids)', { ids }));
         }
         return total;
     }
@@ -335,6 +433,7 @@ export class FanpageOutcomesService {
             .addSelect("SUM(CASE WHEN customer.status = 'closed' THEN 1 ELSE 0 END)", 'closed')
             .where('customer.deletedAt IS NULL')
             .andWhere('customer.inputDate >= :from AND customer.inputDate <= :to', { from, to })
+            .andWhere('customer.fanpageId IS NULL') // GĐ5b: khách có fanpage_id luôn đã được ghi công (không phải "Chưa quy về Page")
             .andWhere('(customer.utmId IS NULL OR customer.utmId NOT IN (SELECT fu.utm_id FROM fanpage_utms fu WHERE fu.primary_utm_id IS NOT NULL))');
         CustomerAccessHelper.applyViewFilter(qb, user.id, user.role, customerScope);
         const r = await qb.getRawOne();

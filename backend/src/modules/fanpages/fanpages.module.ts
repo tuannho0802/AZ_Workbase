@@ -9,6 +9,9 @@ import { FanpageMetricSnapshot } from '../../database/entities/fanpage-metric-sn
 import { FanpageTarget } from '../../database/entities/fanpage-target.entity';
 import { FanpageUtm } from '../../database/entities/fanpage-utm.entity';
 import { Customer } from '../../database/entities/customer.entity';
+import { MediaSource } from '../../database/entities/media-source.entity';
+import { CustomersModule } from '../customers/customers.module';
+import { FanpageLeadsService } from './fanpage-leads.service';
 import { Deposit } from '../../database/entities/deposit.entity';
 import { UtmsModule } from '../utms/utms.module';
 import { UiVisibilityModule } from '../ui-visibility/ui-visibility.module';
@@ -40,6 +43,7 @@ import {
   FanpageMetricsController,
   FanpagePostsController,
   FanpageNotesController,
+  FanpageLeadsController,
   FanpagePlatformsController,
   FanpageHealthStatusesController,
 } from './fanpages.controller';
@@ -47,9 +51,10 @@ import {
 // PermissionsModule (@Global) và AuditModule cung cấp PermissionsService/AuditService như ở UtmsModule.
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Fanpage, FanpagePlatform, FanpagePost, FanpageNote, FanpageHealthStatus, FanpageMetricSnapshot, FanpageTarget, FanpageUtm, Customer, Deposit, Setting, AuditLog, User]),
+    TypeOrmModule.forFeature([Fanpage, FanpagePlatform, FanpagePost, FanpageNote, FanpageHealthStatus, FanpageMetricSnapshot, FanpageTarget, FanpageUtm, Customer, Deposit, MediaSource, Setting, AuditLog, User]),
     UtmsModule, // UtmsService.usabilityFor + UtmCustomersService (không vòng: UtmsService chỉ import HÀM thuần của fanpages/helpers)
     UiVisibilityModule,
+    CustomersModule, // GĐ5b: tạo Lead qua CustomersService.create (không nhân đôi luật tạo khách)
   ],
   // THỨ TỰ có nghĩa: FanpageStatsController (`fanpages/stats/posts`) phải đứng TRƯỚC FanpagePostsController (`fanpages/:fanpageId/posts`).
   controllers: [
@@ -59,6 +64,7 @@ import {
     FanpageMetricsController,
     FanpagePostsController,
     FanpageNotesController,
+    FanpageLeadsController, // sau FanpagesController (xem chú thích ở controller)
     FanpagePlatformsController,
     FanpageHealthStatusesController,
     FanpagesCronController,
@@ -81,6 +87,7 @@ import {
     FanpageStatsService,
     FanpageUtmsService,
     FanpageOutcomesService,
+    FanpageLeadsService,
   ],
   // SidebarBadgesService đếm badge "cần đăng bài" bằng đúng nguồn của tab Hôm nay (X2/X16).
   exports: [FanpageTodayService],

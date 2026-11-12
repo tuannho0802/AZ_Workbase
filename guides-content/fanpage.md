@@ -46,3 +46,15 @@ Theo cấu hình mặc định: Admin / Assistant xem **Tất cả**, Manager xe
 - Người tạo Page mặc định là người phụ trách. Chỉ người có quyền Sửa Fanpage phạm vi **Phòng ban** hoặc **Tất cả** mới giao Page cho người khác (phòng ban: chỉ giao trong phòng ban mình quản lý).
 - **Nền tảng đã khoá** không chọn được cho Page mới; Page cũ vẫn hiện đúng tên nền tảng. Nền tảng không xoá được.
 - **Xoá Page, bài đăng, ghi chú** mặc định chỉ **Admin**. Xoá Page sẽ xoá luôn toàn bộ bài đăng và ghi chú của Page đó.
+
+## Data khách hàng của Page (Lead)
+
+Mở một Page → tab **Data khách hàng** (chỉ hiện khi bạn có quyền xem Khách hàng).
+
+- **Thêm khách:** bấm **Thêm khách**, nhập Họ tên, **Số điện thoại (bắt buộc)**, Email, Nguồn, Ghi chú. Nếu để trống Nguồn, hệ thống dùng nền tảng của Page khi trùng với một nguồn đang mở; nếu không trùng bạn phải chọn nguồn.
+- **Thêm từ Ghi chú tiến trình:** khi viết ghi chú, mở mục **＋ Thêm khách hàng từ ghi chú này** để tạo khách cùng lúc. Cần quyền ghi chú Page **và** quyền tạo Khách hàng.
+- **Trùng số điện thoại:** hệ thống cảnh báo và **không lưu** (kể cả ghi chú). Khách cũ không tự gắn vào Page.
+- **Bạn thấy gì:** danh sách theo phạm vi dữ liệu khách hàng của bạn — hai người có thể thấy số khách khác nhau trên cùng một Page.
+- **Sửa/xoá khách:** bấm biểu tượng mở sang trang Khách hàng (đúng quyền sửa/xoá của bạn).
+- **Tính vào thống kê Page:** khách nhập từ Page ghi công cho đúng Page đó (ưu tiên hơn UTM). Mỗi khách chỉ ghi công cho một Page nên tổng không bị đếm trùng.
+- Page đã lưu trữ không thêm khách mới được — bỏ lưu trữ trước.

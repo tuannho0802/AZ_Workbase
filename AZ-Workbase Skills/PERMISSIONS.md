@@ -884,6 +884,13 @@ người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
   - **Bài đăng**: trùng URL trong cùng Page → `409` (`code: FANPAGE_POST_DUPLICATE`, kèm `existingPostId`); URL chuẩn hoá bỏ tham số theo dõi (`helpers/fanpage-url.helper.ts`).
   - **Nhắc việc (GĐ3)**: `GET /api/fanpages-cron/reminders` xác thực `CRON_SECRET` (KHÔNG JWT, KHÔNG nằm `vercel.json`), do dịch vụ Uptime gọi mỗi 30 phút, chỉ gửi từ 17:00 giờ VN; `?dryRun=true` để xem trước. Event `fanpage.silent` (mốc 3/7/14/30 ngày) + `fanpage.weekly_at_risk` (1 lần/tuần) gửi cho MỌI người phụ trách, idempotent bằng `dedupeSuffix`.
   - **Badge sidebar** `fanpageToDo` (key nav `fanpage`): chỉ có khi có `fanpages.view`; cache 60s/user, bị xoá bởi mọi request ghi thành công (`BadgeCacheInvalidationMiddleware`).
+  - **GĐ5b — Lead (khách hàng) từ Page (2026-11-12)** — migration `1786394000000-AddFanpageLeadLinks` (`customers.fanpage_id` FK SET NULL + `fanpage_notes.lead_customer_id` UNIQUE FK SET NULL; **chạy thủ công sau backup, TRƯỚC khi deploy code**). **KHÔNG có permission key mới** — dùng lại `customers.*`:
+    - `GET /fanpages/:id/customers` = `customers.view` **và** thấy được Page (`fanpages.view`); danh sách + số đếm cùng 1 truy vấn, lọc `CustomerAccessHelper.applyViewFilter` theo scope `customers.view` của người xem, bỏ xoá mềm, phân trang BE.
+    - `POST /fanpages/:id/customers` = `customers.create` **và** thấy được Page; đi qua `CustomersService.create` (không nhân đôi luật tạo khách), **SĐT bắt buộc** (DTO riêng `FanpageLeadDto`), không gán Sales / không set `marketingUserId` (Q11), Page đã lưu trữ → 409.
+    - `POST /fanpages/:id/notes` có `lead` = `fanpage_notes.manage` **+ `customers.create`** (BE kiểm cả hai — X31). Thứ tự: tạo khách → lưu ghi chú; khách lỗi (trùng SĐT…) → 4xx, **chưa lưu ghi chú**; ghi chú lỗi sau khi khách đã tạo → xoá mềm khách vừa tạo. `PATCH` ghi chú KHÔNG nhận `lead` (400).
+    - Sửa/xoá Lead: dùng endpoint Khách hàng sẵn có (`customers.edit/delete`), **không** thêm endpoint. `UpdateCustomerDto` không nhận `fanpageId`.
+    - **Quy kết (15.3, Q10)**: `customers.fanpage_id` ưu tiên hơn UTM; mỗi khách ghi công tối đa 1 Page; truy vấn theo UTM luôn thêm `fanpage_id IS NULL` → `Σ chính == Tổng DISTINCT` giữ nguyên. Hàm đối chiếu thuần: `resolveCreditedPage` (`helpers/fanpage-utm.helper.ts`).
+    - FE: tab "Data khách hàng" chỉ render khi `can('customers.view')`; nút "Thêm khách" khi `can('customers.create')`; mục "Thêm khách hàng từ ghi chú này" khi flag Page `canManageNotes` + `can('customers.create')`. Không dùng `role === 'admin'`.
 
 ## 3. Lịch sử quyết định & rà soát
 

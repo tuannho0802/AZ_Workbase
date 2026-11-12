@@ -13,7 +13,8 @@ import { FanpageOverviewService } from './fanpage-overview.service';
 import { FanpageHistoryService } from './fanpage-history.service';
 import { FanpageTodayService } from './fanpage-today.service';
 import { CreateFanpageDto, UpdateFanpageDto, FanpageQueryDto } from './dto/fanpage.dto';
-import { CreateFanpagePostDto, UpdateFanpagePostDto, FanpageNoteDto } from './dto/fanpage-post.dto';
+import { CreateFanpagePostDto, UpdateFanpagePostDto, FanpageNoteDto, FanpageLeadDto, FanpageLeadsQueryDto } from './dto/fanpage-post.dto';
+import { FanpageLeadsService } from './fanpage-leads.service';
 import { CreateFanpagePlatformDto, UpdateFanpagePlatformDto } from './dto/fanpage-platform.dto';
 import { CreateFanpageHealthStatusDto, UpdateFanpageHealthStatusDto } from './dto/fanpage-health-status.dto';
 import { FanpageMetricsService } from './fanpage-metrics.service';
@@ -317,6 +318,29 @@ export class FanpagePostsController {
   @ApiOperation({ summary: 'Xoá bài đăng (mặc định chỉ Admin)' })
   remove(@Param('fanpageId', ParseIntPipe) fanpageId: number, @Param('postId', ParseIntPipe) postId: number, @GetUser() user: FanpageCaller) {
     return this.service.remove(fanpageId, postId, user);
+  }
+}
+
+@ApiTags('Fanpage - Data khách hàng (Lead)')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionGuard)
+// ⚠️ Phải đăng ký SAU FanpagesController trong module: `fanpages/outcomes/customers` (route tĩnh) cũng khớp pattern `:fanpageId/customers`.
+@Controller('fanpages/:fanpageId/customers')
+export class FanpageLeadsController {
+  constructor(private readonly service: FanpageLeadsService) {}
+
+  @Get()
+  @RequirePermission('customers.view')
+  @ApiOperation({ summary: 'Khách (Lead) của Page - theo phạm vi customers.view của người xem, phân trang BE' })
+  list(@Param('fanpageId', ParseIntPipe) fanpageId: number, @Query() query: FanpageLeadsQueryDto, @GetUser() user: FanpageCaller) {
+    return this.service.list(fanpageId, query, user);
+  }
+
+  @Post()
+  @RequirePermission('customers.create')
+  @ApiOperation({ summary: 'Thêm khách (Lead) thủ công cho Page - đi qua CustomersService.create, SĐT bắt buộc' })
+  create(@Param('fanpageId', ParseIntPipe) fanpageId: number, @Body() dto: FanpageLeadDto, @GetUser() user: FanpageCaller) {
+    return this.service.create(fanpageId, dto, user);
   }
 }
 

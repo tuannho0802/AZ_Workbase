@@ -7,17 +7,23 @@ type Raw = Record<string, unknown>;
 const user = { id: 5, role: 'employee', departmentId: 1, positionId: null, isRootAdmin: false };
 
 /** QueryBuilder giả: ghi lại `select` đầu tiên để phân biệt truy vấn gộp theo UTM / DISTINCT / chưa quy. */
-function fakeQb(h: { many?: Raw[]; one?: (sel: string) => Raw | undefined; entities?: unknown[] }) {
+function fakeQb(h: { many?: Raw[]; manyFp?: Raw[]; one?: (sel: string, fp: boolean) => Raw | undefined; entities?: unknown[] }) {
     let sel = '';
+    // GĐ5b: truy vấn "khách ghi công TRỰC TIẾP cho Page" (có `customer.fanpageId IN`) trả dữ liệu riêng (mặc định rỗng/0).
+    let fp = false;
     const qb: Record<string, jest.Mock> = {};
     for (const m of ['select', 'addSelect', 'where', 'andWhere', 'groupBy', 'innerJoin']) {
         qb[m] = jest.fn((a: unknown) => {
-            if (m === 'select') sel = String(a);
+            if (m === 'select') {
+                sel = String(a);
+                fp = false;
+            }
+            if (m === 'andWhere' && String(a).includes('customer.fanpageId IN')) fp = true;
             return qb;
         });
     }
-    qb.getRawMany = jest.fn(async () => h.many ?? []);
-    qb.getRawOne = jest.fn(async () => h.one?.(sel));
+    qb.getRawMany = jest.fn(async () => (fp ? (h.manyFp ?? []) : (h.many ?? [])));
+    qb.getRawOne = jest.fn(async () => h.one?.(sel, fp));
     qb.getMany = jest.fn(async () => h.entities ?? []);
     // Ghi lại tham số `ids` của where() để mock getMany lọc theo fanpageId như truy vấn thật.
     qb.where = jest.fn((a: unknown, params?: { ids?: number[] }) => {
@@ -33,6 +39,8 @@ interface Opts {
     revenueView?: string | null;
     revenuePageIds?: number[];
     hidden?: string[];
+    /** GĐ5b: khách ghi công TRỰC TIẾP theo `fanpage_id` (không qua UTM). */
+    leads?: { fanpageId: number; cnt: string; closed: string; deposit?: string }[];
 }
 
 function setup(o: Opts = {}) {
@@ -70,14 +78,23 @@ function setup(o: Opts = {}) {
             { utmId: 10, cnt: '10', closed: '4' },
             { utmId: 11, cnt: '5', closed: '1' },
         ],
-        one: (sel) => (sel.includes('DISTINCT') ? { cnt: '15', closed: '5' } : { cnt: '3', closed: '1' }),
+        manyFp: (o.leads ?? []).map((l) => ({ fanpageId: l.fanpageId, cnt: l.cnt, closed: l.closed })),
+        one: (sel, fp) => {
+            if (fp) {
+                const cnt = (o.leads ?? []).reduce((n, l) => n + Number(l.cnt), 0);
+                const closed = (o.leads ?? []).reduce((n, l) => n + Number(l.closed), 0);
+                return { cnt: String(cnt), closed: String(closed) };
+            }
+            return sel.includes('DISTINCT') ? { cnt: '15', closed: '5' } : { cnt: '3', closed: '1' };
+        },
     });
     const depositQb = fakeQb({
         many: [
             { utmId: 10, total: '1000.50' },
             { utmId: 11, total: '200' },
         ],
-        one: () => ({ total: '1200.50' }),
+        manyFp: (o.leads ?? []).map((l) => ({ fanpageId: l.fanpageId, total: l.deposit ?? '0' })),
+        one: (_sel, fp) => (fp ? { total: String((o.leads ?? []).reduce((n, l) => n + Number(l.deposit ?? 0), 0)) } : { total: '1200.50' }),
     });
     const postQb = fakeQb({ many: [{ fanpageId: 1, cnt: '5' }] });
 
@@ -263,5 +280,49 @@ describe('FanpageOutcomesService.listCustomers', () => {
         t.utmsService.usabilityFor.mockResolvedValueOnce(new Map([[10, { id: 10, restricted: true, canUse: false }]]) as never);
         const r = await t.svc.listCustomers(user, q);
         expect((r.data[0].utm as { name: string }).name).toBe(RESTRICTED_UTM_LABEL);
+    });
+});
+
+describe('FanpageOutcomesService - GĐ5b: Lead (fanpage_id) ưu tiên hơn UTM (15.3, 15.8)', () => {
+    it('Lead cộng vào cột "chính" của đúng Page; Σ chính == Tổng DISTINCT (bất biến R4 giữ nguyên)', async () => {
+        const t = setup({ leads: [{ fanpageId: 2, cnt: '4', closed: '2' }] });
+        const r = await t.svc.getOutcomes(user, Q);
+        const [a, b] = r.pages;
+        expect(a.primary.customers).toBe(10);
+        expect(b.primary.customers).toBe(5 + 4);
+        expect(b.primary.closed).toBe(1 + 2);
+        expect(r.total.customers).toBe(a.primary.customers + b.primary.customers);
+        expect(r.total.customers).toBe(19);
+        expect(b.participating.customers).toBe(10);
+    });
+
+    it('mọi truy vấn theo UTM đều loại khách có fanpage_id (tránh đếm 2 lần)', async () => {
+        const t = setup({ leads: [{ fanpageId: 2, cnt: '4', closed: '2' }] });
+        await t.svc.getOutcomes(user, Q);
+        const qb = t.customerRepo.createQueryBuilder.mock.results[0].value as { andWhere: jest.Mock };
+        const conds = (qb.andWhere.mock.calls as unknown[][]).map((c) => String(c[0]));
+        expect(conds.some((c) => c.includes('customer.fanpageId IS NULL'))).toBe(true);
+    });
+
+    it('Tiền Lead cộng vào Page + Tổng khi đủ cổng; Tổng tiền ẩn nếu Page có Lead không nằm trong fanpage_revenue.view', async () => {
+        const full = await setup({ leads: [{ fanpageId: 2, cnt: '4', closed: '2', deposit: '300' }] }).svc.getOutcomes(user, Q);
+        expect(full.pages[1].primary.deposit).toBe(200 + 300);
+        expect(full.total.deposit).toBe(1200.5 + 300);
+
+        const partial = await setup({ revenuePageIds: [1], leads: [{ fanpageId: 2, cnt: '4', closed: '2', deposit: '300' }] }).svc.getOutcomes(user, Q);
+        expect(JSON.stringify(partial.pages[1])).not.toContain('deposit');
+        expect(partial.total.deposit).toBeUndefined();
+    });
+
+    it('listCustomers truyền chế độ quy kết cho UtmCustomersService (danh sách == số đã hiện)', async () => {
+        const t = setup();
+        await t.svc.listCustomers(user, { ...Q, kind: 'primary', fanpageId: 2 });
+        const filter = (t.utmCustomers.listForUtms.mock.calls[0] as unknown as [number[], Record<string, unknown>])[1];
+        expect(filter.credit).toEqual({ mode: 'primary', fanpageId: 2 });
+
+        const t2 = setup();
+        await t2.svc.listCustomers(user, { ...Q, kind: 'participating', fanpageId: 2 });
+        const filter2 = (t2.utmCustomers.listForUtms.mock.calls[0] as unknown as [number[], Record<string, unknown>])[1];
+        expect(filter2.credit).toEqual({ mode: 'participating' });
     });
 });

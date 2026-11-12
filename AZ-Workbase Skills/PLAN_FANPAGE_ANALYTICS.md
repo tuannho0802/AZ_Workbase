@@ -558,11 +558,11 @@ Mỗi giai đoạn **độc lập deploy được** và có giá trị riêng; k
   - Gỡ Page chính khi còn Page khác → 409; gộp UTM không tạo dòng trùng, giữ Page chính đích.
 
 ### GĐ5b — Lead (khách hàng) thủ công + Ghi chú tiến trình (mục 15) — *làm SAU M3/GĐ5 hoặc cùng lúc, vì đụng quy tắc quy kết*
-- [ ] Chốt Q10, Q11. `git pull`, `ls` migrations lấy timestamp thật (hiện lớn nhất `1786391000000`).
-- [ ] M5 `AddFanpageLeadLinks`; entity `customer.entity.ts` + `fanpage-note.entity.ts`.
-- [ ] BE: `GET/POST /fanpages/:id/customers`; `FanpageNoteDto.lead?`; `fanpage-leads.service` (gọi `CustomersService.create`, KHÔNG viết lại luật tạo khách); sửa `fanpage-outcomes` theo 15.3 (nếu GĐ5 đã làm).
-- [ ] FE: tab Drawer **Data khách hàng** + mục "Thêm khách" trong form ghi chú, gate `can('customers.view'|'customers.create')`.
-- **Hoàn thành khi:** các test ở 15.6 xanh; `tsc --noEmit`, `nest build`, jest, vitest pass.
+- [x] Chốt Q10, Q11. `git pull`, `ls` migrations lấy timestamp thật (đã dùng `1786394000000`; lớn nhất trước đó `1786393000000`).
+- [x] M5 `AddFanpageLeadLinks`; entity `customer.entity.ts` + `fanpage-note.entity.ts`.
+- [x] BE: `GET/POST /fanpages/:id/customers`; `FanpageNoteDto.lead?`; `fanpage-leads.service` (gọi `CustomersService.create`, KHÔNG viết lại luật tạo khách); sửa `fanpage-outcomes` theo 15.3 (nếu GĐ5 đã làm).
+- [x] FE: tab Drawer **Data khách hàng** + mục "Thêm khách" trong form ghi chú, gate `can('customers.view'|'customers.create')`.
+- **Hoàn thành khi:** các test ở 15.6 xanh; `tsc --noEmit`, `nest build`, jest, vitest pass. *(2026-11-12: code + spec đã viết; `tsc --noEmit` BE/FE + `nest build` sạch; jest/vitest CHƯA chạy theo yêu cầu.)*
 
 ### GĐ6 — Hoàn thiện: B4, B5, A4, E5a, C3
 - [ ] Dán nhiều link (BE bulk + FE xem trước).

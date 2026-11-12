@@ -1,10 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FanpageNote } from '../../database/entities/fanpage-note.entity';
 import { AuditService } from '../audit/audit.service';
 import { FanpageNoteDto } from './dto/fanpage-post.dto';
 import { FanpageAccessService, FanpageCaller } from './fanpage-access.service';
+import { FanpageLeadsService } from './fanpage-leads.service';
 
 @Injectable()
 export class FanpageNotesService {
@@ -13,6 +14,7 @@ export class FanpageNotesService {
         private readonly repo: Repository<FanpageNote>,
         private readonly access: FanpageAccessService,
         private readonly auditService: AuditService,
+        private readonly leads: FanpageLeadsService,
     ) { }
 
     private withUsers(id?: number) {
@@ -36,18 +38,33 @@ export class FanpageNotesService {
     }
 
     async create(fanpageId: number, dto: FanpageNoteDto, user: FanpageCaller): Promise<FanpageNote> {
-        await this.access.assertPageAccess(user, 'fanpage_notes.manage', fanpageId, 'Bạn không có quyền ghi chú cho Page này');
-        const saved = await this.repo.save(this.repo.create({ fanpageId, note: dto.note.trim(), createdById: user.id }));
+        const page = await this.access.assertPageAccess(user, 'fanpage_notes.manage', fanpageId, 'Bạn không có quyền ghi chú cho Page này');
+
+        // X29: tạo khách TRƯỚC, lưu ghi chú SAU. Khách lỗi (trùng SĐT, validate, thiếu `customers.create`, Page lưu trữ) -> ném 4xx và
+        // CHƯA lưu ghi chú. Ghi chú lỗi sau khi khách đã tạo (hiếm) -> xoá mềm khách vừa tạo (`compensateCreated`).
+        const leadCustomer = dto.lead ? await this.leads.createForPage(page, dto.lead, user) : null;
+
+        let saved: FanpageNote;
+        try {
+            saved = await this.repo.save(
+                this.repo.create({ fanpageId, note: dto.note.trim(), createdById: user.id, leadCustomerId: leadCustomer?.id ?? null }),
+            );
+        } catch (e) {
+            if (leadCustomer) await this.leads.compensateCreated(leadCustomer.id, user, e);
+            throw e;
+        }
         this.auditService.logActionAsync(user.id, 'CREATE_FANPAGE_NOTE', 'fanpage_note', saved.id, null, {
             id: saved.id,
             fanpageId,
             note: saved.note,
+            ...(leadCustomer ? { leadCustomerId: leadCustomer.id } : {}),
         });
         return this.withUsers(saved.id).getOneOrFail();
     }
 
     async update(fanpageId: number, noteId: number, dto: FanpageNoteDto, user: FanpageCaller): Promise<FanpageNote> {
         await this.access.assertPageAccess(user, 'fanpage_notes.manage', fanpageId, 'Bạn không có quyền sửa ghi chú của Page này');
+        if (dto.lead) throw new BadRequestException('Chỉ có thể thêm khách khi tạo ghi chú mới, không thêm khi sửa ghi chú');
         const note = await this.findInPage(fanpageId, noteId);
         const next = dto.note.trim();
         if (next !== note.note) {

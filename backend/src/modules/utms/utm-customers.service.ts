@@ -18,6 +18,12 @@ export interface UtmStatsCustomersFilter {
   search?: string;
   page?: number;
   limit?: number;
+  /**
+   * GĐ5b (PLAN Fanpage 15.3) - chỉ `fanpage-outcomes` truyền; thống kê UTM thường KHÔNG truyền (giữ nguyên hành vi).
+   *  - `primary`: khách ghi công cho Page = `fanpage_id` là Page đó HOẶC (`fanpage_id` NULL và UTM thuộc `utmIds` - các UTM mà Page là chính).
+   *  - `participating`: chỉ khách `fanpage_id` NULL của các UTM dùng chung (khách đã ghi công trực tiếp cho Page khác không tính).
+   */
+  credit?: { mode: 'primary'; fanpageId: number } | { mode: 'participating' };
 }
 
 /**
@@ -151,7 +157,7 @@ export class UtmCustomersService {
   async listForUtms(utmIds: number[], filter: UtmStatsCustomersFilter, caller: UtmCaller, scope: string | null | undefined) {
     const page = filter.page ?? 1;
     const limit = filter.limit ?? 10;
-    if (!scope || utmIds.length === 0) return { data: [], total: 0, page, limit, totalPages: 0 };
+    if (!scope || (utmIds.length === 0 && filter.credit?.mode !== 'primary')) return { data: [], total: 0, page, limit, totalPages: 0 };
 
     const qb = this.customerRepo
       .createQueryBuilder('customer')
@@ -159,8 +165,20 @@ export class UtmCustomersService {
       .leftJoinAndSelect('customer.marketingUser', 'marketingUser')
       .leftJoinAndSelect('customer.utm', 'utm')
       .where('customer.deletedAt IS NULL')
-      .andWhere('customer.utmId IN (:...utmIds)', { utmIds })
       .andWhere('customer.inputDate >= :from AND customer.inputDate <= :to', { from: filter.from, to: filter.to });
+    if (filter.credit?.mode === 'primary') {
+      if (utmIds.length > 0) {
+        qb.andWhere('(customer.fanpageId = :creditPageId OR (customer.fanpageId IS NULL AND customer.utmId IN (:...utmIds)))', {
+          creditPageId: filter.credit.fanpageId,
+          utmIds,
+        });
+      } else {
+        qb.andWhere('customer.fanpageId = :creditPageId', { creditPageId: filter.credit.fanpageId });
+      }
+    } else {
+      qb.andWhere('customer.utmId IN (:...utmIds)', { utmIds });
+      if (filter.credit?.mode === 'participating') qb.andWhere('customer.fanpageId IS NULL');
+    }
     CustomerAccessHelper.applyViewFilter(qb, caller.id, caller.role, scope);
 
     if (filter.search?.trim()) {

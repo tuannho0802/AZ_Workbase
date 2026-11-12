@@ -8,6 +8,9 @@ import {
     FanpageHealthStatusPayload,
     FanpageHistoryEvent,
     FanpageNote,
+    CreateFanpageLeadPayload,
+    CreateFanpageNotePayload,
+    FanpageLeadsParams,
     FanpagePlatform,
     FanpagePlatformPayload,
     FanpagePost,
@@ -36,6 +39,7 @@ export const fanpageKeys = {
     detail: (id: number | null) => [...KEY, 'detail', id] as const,
     posts: (id: number | null) => [...KEY, 'posts', id] as const,
     notes: (id: number | null) => [...KEY, 'notes', id] as const,
+    customers: (id: number | null, params?: unknown) => [...KEY, 'customers', id, params ?? null] as const,
     history: (id: number | null) => [...KEY, 'history', id] as const,
     ownerOptions: () => [...KEY, 'owner-options'] as const,
     snapshots: (id: number | null) => [...KEY, 'snapshots', id] as const,
@@ -223,9 +227,42 @@ export const useFanpageNotes = (fanpageId: number | null) => {
     return { notes: data ?? EMPTY_NOTES, isLoading };
 };
 
+/** Thêm Lead làm đổi số Khách (bảng Page → Khách `stats('outcomes')`, tab Data khách hàng), danh sách Khách hàng toàn hệ thống và badge. */
+function useInvalidateFanpageLeads() {
+    const qc = useQueryClient();
+    return () =>
+        Promise.all([
+            qc.invalidateQueries({ queryKey: KEY }), // customers(id), detail(id), notes(id), stats('outcomes')
+            qc.invalidateQueries({ queryKey: ['customers'] }),
+            qc.invalidateQueries({ queryKey: SIDEBAR_BADGES_QUERY_KEY }),
+        ]);
+}
+
+/** Danh sách Lead của Page (phân trang BE). `enabled=false` khi thiếu `customers.view` - KHÔNG bắn request rồi dính 403. */
+export const useFanpageLeads = (fanpageId: number | null, params: FanpageLeadsParams, enabled = true) => {
+    const { data, isLoading, isFetching } = useQuery({
+        queryKey: fanpageKeys.customers(fanpageId, params),
+        queryFn: () => fanpagesApi.listLeads(fanpageId as number, params),
+        enabled: enabled && fanpageId != null,
+        staleTime: 30 * 1000,
+        placeholderData: keepPreviousData,
+    });
+    return { leads: data, isLoading, isFetching };
+};
+
+export const useCreateFanpageLead = (fanpageId: number) => {
+    const invalidate = useInvalidateFanpageLeads();
+    return useMutation({ mutationFn: (payload: CreateFanpageLeadPayload) => fanpagesApi.createLead(fanpageId, payload), onSuccess: invalidate });
+};
+
 export const useCreateFanpageNote = (fanpageId: number) => {
-    const invalidate = useInvalidateFanpages();
-    return useMutation({ mutationFn: (note: string) => fanpagesApi.createNote(fanpageId, note), onSuccess: invalidate });
+    const invalidateNotes = useInvalidateFanpages();
+    const invalidateLeads = useInvalidateFanpageLeads();
+    return useMutation({
+        mutationFn: (payload: CreateFanpageNotePayload) => fanpagesApi.createNote(fanpageId, payload),
+        // Ghi chú có `lead` -> làm mới cả khách/thống kê/badge; ghi chú thường chỉ làm mới Page.
+        onSuccess: (_n, vars) => (vars.lead ? invalidateLeads() : invalidateNotes()),
+    });
 };
 
 export const useUpdateFanpageNote = (fanpageId: number) => {

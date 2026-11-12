@@ -132,6 +132,9 @@ export function FanpageOutcomesCard({ params, enabled, onOpenDetail }: Props) {
                     <Text type="secondary" style={{ fontSize: 12 }}>
                         Khách tính theo Ngày nhập trong kỳ và phạm vi khách hàng bạn được xem · tiền nạp tính theo Ngày nạp. Tổng = tổng cột “ghi công” (mỗi khách chỉ ghi công cho 1 Page).
                     </Text>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                        Thứ tự ghi công: khách nhập từ Page (tab “Data khách hàng”) ghi công cho đúng Page đó trước; khách còn lại ghi công theo Page chính của UTM.
+                    </Text>
                     <Table<PageOutcomeRow>
                         size="small"
                         rowKey="fanpageId"

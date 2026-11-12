@@ -122,12 +122,25 @@ const addAgg = (b: OutcomeBucket, agg: UtmAgg | undefined): void => {
  * R2/R3: số "chính" của Page chỉ từ UTM mà Page đó là CHÍNH; UTM gắn nhưng không chính -> "tham gia" (không cộng vào tổng).
  * `links` chỉ cần các dòng của Page trong `pageIds`.
  */
-export function buildPageOutcomes(pageIds: number[], links: UtmLinkRow[], byUtm: Map<number, UtmAgg>): PageOutcome[] {
+export function buildPageOutcomes(
+    pageIds: number[],
+    links: UtmLinkRow[],
+    byUtm: Map<number, UtmAgg>,
+    /** GĐ5b (15.3): khách ghi công TRỰC TIẾP theo `fanpage_id` - cộng vào cột "chính" của đúng Page, không phụ thuộc UTM. */
+    byFanpage: Map<number, UtmAgg> = new Map(),
+): PageOutcome[] {
     const map = new Map<number, PageOutcome>(pageIds.map((id) => [id, { fanpageId: id, primary: emptyBucket(), participating: emptyBucket() }]));
     for (const l of links) {
         const row = map.get(l.fanpageId);
         if (!row) continue;
         addAgg(l.isPrimary ? row.primary : row.participating, byUtm.get(l.utmId));
+    }
+    for (const [fanpageId, agg] of byFanpage) {
+        const row = map.get(fanpageId);
+        if (!row) continue;
+        row.primary.customers += agg.customers;
+        row.primary.closed += agg.closed;
+        row.primary.deposit += agg.deposit;
     }
     for (const row of map.values()) {
         row.primary.closeRate = closeRate(row.primary.closed, row.primary.customers);
@@ -142,3 +155,25 @@ export const sumPrimaryCustomers = (rows: PageOutcome[]): number => rows.reduce(
 /** Khách/bài = khách ghi công / số bài trong kỳ; null khi Page không có bài (tránh chia 0). R3: Page tham gia không tính. */
 export const customersPerPost = (primaryCustomers: number, posts: number): number | null =>
     posts > 0 ? Math.round((primaryCustomers / posts) * 10) / 10 : null;
+
+// ───────────── GĐ5b: thứ tự ghi công (15.3) ─────────────
+
+/** utmId -> Page CHÍNH của UTM đó (mỗi UTM tối đa 1 Page chính). */
+export function primaryPageByUtm(links: UtmLinkRow[]): Map<number, number> {
+    const m = new Map<number, number>();
+    for (const l of links) if (l.isPrimary) m.set(l.utmId, l.fanpageId);
+    return m;
+}
+
+/**
+ * Hàm đối chiếu THUẦN cho truy vấn SQL: khách ghi công cho đúng 1 Page.
+ * Thứ tự: `fanpage_id` (Lead nhập từ Page) > Page chính của UTM > null ("Chưa quy về Page").
+ */
+export function resolveCreditedPage(
+    customer: { fanpageId: number | null; utmId: number | null },
+    primaryByUtm: Map<number, number>,
+): number | null {
+    if (customer.fanpageId != null) return customer.fanpageId;
+    if (customer.utmId != null) return primaryByUtm.get(customer.utmId) ?? null;
+    return null;
+}

@@ -8361,3 +8361,19 @@ Now [deploy]
 > Không tạo CHECK `primary_utm_id = utm_id` (MySQL 3823 với FK CASCADE) - bất biến giữ ở service. Không có permission key mới. Cần chạy migration 1786393000000 thủ công. Test spec đã viết nhưng CHƯA chạy lần cuối; 1 mock trong outcomes spec đã sửa.
 
 ---
+
+## [2026-11-12 19:00] | GĐ5b - Lead (khách hàng) từ Page + Ghi chú tiến trình | [Status: Success (chưa chạy test theo yêu cầu - tsc BE/FE sạch, nest build OK)]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/migrations/1786394000000-AddFanpageLeadLinks.ts`, `entities/customer.entity.ts` (`fanpage_id`), `entities/fanpage-note.entity.ts` (`lead_customer_id` UNIQUE)
+- `backend/src/modules/fanpages/`: `fanpage-leads.service.ts` (+spec, có từ commit setup), `fanpage-notes.service.ts`, `dto/fanpage-post.dto.ts` (`FanpageLeadDto`, `FanpageLeadsQueryDto`, `FanpageNoteDto.lead`), `fanpages.controller.ts` (`FanpageLeadsController` đăng ký SAU FanpagesController), `fanpages.module.ts` (import `CustomersModule`, `MediaSource`)
+- `fanpage-outcomes.service.ts`, `helpers/fanpage-utm.helper.ts` (`resolveCreditedPage`, `buildPageOutcomes` nhận `byFanpage`), `modules/utms/utm-customers.service.ts` (`credit`) — `fanpage_id` ưu tiên hơn UTM (15.3); spec outcomes/helper cập nhật
+- `frontend`: `FanpageLeadsTab`, `FanpageLeadFields` (có từ commit setup), `FanpageNotesTab`, `FanpageDetailDrawer`, `FanpageOutcomesCard`, `lib/api/fanpages.api.ts`, `lib/hooks/useFanpages.ts`, `lib/utils/fanpageLead.ts(+test)`
+- `PERMISSIONS.md` §2.20, `PLAN_FANPAGE_ANALYTICS.md` (tick GĐ5b), `guides-content/fanpage.md`
+
+**Notes:**
+> - Không có permission key mới (dùng `customers.view/create`); audit dùng `CREATE_CUSTOMER`, `CREATE_FANPAGE_NOTE` (kèm `leadCustomerId`).
+> - CHƯA chạy jest/vitest. Người dùng cần: backup DB → chạy migration `1786394000000` → deploy BE trước, FE sau.
+
+---

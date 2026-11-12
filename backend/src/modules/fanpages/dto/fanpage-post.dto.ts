@@ -1,4 +1,5 @@
-import { IsString, IsNotEmpty, IsInt, Length, IsOptional, IsUrl, Matches, Max, Min, ValidateIf } from 'class-validator';
+import { IsString, IsNotEmpty, IsInt, Length, IsOptional, IsUrl, Matches, Max, Min, ValidateIf, IsEmail, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { METRIC_MAX_VALUE } from '../helpers/fanpage-metrics.helper';
 
@@ -92,10 +93,71 @@ export class UpdateFanpagePostDto extends PostMetricsDto {
     note?: string | null;
 }
 
+/** GĐ5b - Lead nhập từ Page. SĐT BẮT BUỘC và phải là SĐT thật (không nhận `MISSING_*`) - khoá chống trùng (PLAN 15.8). */
+export class FanpageLeadDto {
+    @ApiProperty({ example: 'Nguyễn Văn A' })
+    @IsString()
+    @IsNotEmpty({ message: 'Họ tên là bắt buộc' })
+    @Length(1, 100, { message: 'Họ tên tối đa 100 ký tự' })
+    name: string;
+
+    @ApiProperty({ example: '0901234567' })
+    @IsString()
+    @Matches(/^(09|08|07|03|05)[0-9]{8}$/, { message: 'Số điện thoại không hợp lệ (Ví dụ: 0912345678)' })
+    phone: string;
+
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsEmail({}, { message: 'Email không hợp lệ' })
+    @Length(0, 255)
+    email?: string;
+
+    @ApiPropertyOptional({ description: 'Bỏ trống = nền tảng của Page nếu khớp 1 nguồn đang mở' })
+    @IsOptional()
+    @IsString()
+    @Length(0, 100)
+    source?: string;
+
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsString()
+    @Length(0, 5000)
+    note?: string;
+}
+
+export class FanpageLeadsQueryDto {
+    @ApiPropertyOptional({ default: 1 })
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    page?: number;
+
+    @ApiPropertyOptional({ default: 10 })
+    @IsOptional()
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(50)
+    limit?: number;
+
+    @ApiPropertyOptional()
+    @IsOptional()
+    @IsString()
+    @Length(0, 100)
+    search?: string;
+}
+
 export class FanpageNoteDto {
     @ApiProperty({ description: 'Nội dung ghi chú tiến trình' })
     @IsString()
     @IsNotEmpty({ message: 'Nội dung ghi chú là bắt buộc' })
     @Length(1, 5000, { message: 'Ghi chú tối đa 5000 ký tự' })
     note: string;
+
+    @ApiPropertyOptional({ type: () => FanpageLeadDto, description: 'Tạo kèm khách (cần thêm quyền customers.create - BE kiểm)' })
+    @IsOptional()
+    @ValidateNested()
+    @Type(() => FanpageLeadDto)
+    lead?: FanpageLeadDto;
 }

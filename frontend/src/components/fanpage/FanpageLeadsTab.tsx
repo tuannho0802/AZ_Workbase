@@ -6,16 +6,15 @@ import { App, Alert, Button, Empty, Form, Input, Modal, Popconfirm, Space, Table
 import { DeleteOutlined, ExportOutlined, InfoCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
+import { useQueryClient } from '@tanstack/react-query';
 import type { Fanpage, FanpageLeadRow } from '@/lib/api/fanpages.api';
 import { customersApi } from '@/lib/api/customers.api';
-import { useCreateFanpageLead, useFanpageLeads } from '@/lib/hooks/useFanpages';
+import { fanpageKeys, useCreateFanpageLead, useFanpageLeads } from '@/lib/hooks/useFanpages';
 import { useCustomerStatuses } from '@/lib/hooks/useCustomerStatuses';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { buildLeadPayload } from '@/lib/utils/fanpageLead';
 import { toastApiError } from '@/lib/utils/error-message.util';
 import { FanpageLeadFields, useLeadDuplicateCheck } from './FanpageLeadFields';
-import { useQueryClient } from '@tanstack/react-query';
-import { fanpageKeys } from '@/lib/hooks/useFanpages';
 
 const { Text } = Typography;
 const PAGE_SIZE = 10;

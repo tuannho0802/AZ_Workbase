@@ -218,10 +218,61 @@ export interface FanpageNote {
     fanpageId: number;
     note: string;
     editCount: number;
+    /** GĐ5b: khách do ghi chú này sinh ra (null = ghi chú thường). */
+    leadCustomerId?: number | null;
     createdBy: FanpageUserRef | null;
     updatedBy: FanpageUserRef | null;
     createdAt: string;
     updatedAt: string;
+}
+
+/** GĐ5b - Lead (khách hàng) nhập từ Page. `phone` BẮT BUỘC (khoá chống trùng, PLAN 15.8). */
+export interface FanpageLeadDraft {
+    name: string;
+    phone: string;
+    email?: string;
+    /** Bỏ trống = BE dùng nền tảng của Page nếu khớp 1 nguồn đang mở. */
+    source?: string;
+    note?: string;
+}
+
+export interface FanpageLeadRow {
+    id: number;
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+    source: string;
+    status: string;
+    inputDate: string | null;
+    createdAt: string;
+    salesUser?: { id: number; name: string } | null;
+    createdBy: { id: number; name: string } | null;
+    /** Ghi chú Page đã sinh ra khách này (null = nhập tay trực tiếp). */
+    noteId: number | null;
+}
+
+export interface FanpageLeadsParams {
+    page?: number;
+    limit?: number;
+    search?: string;
+}
+
+export interface FanpageLeadsResponse {
+    data: FanpageLeadRow[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+    /** Scope customers.view đang áp - hiện nhãn "theo phạm vi dữ liệu của bạn" (X32). */
+    customerScope: string;
+}
+
+export type CreateFanpageLeadPayload = FanpageLeadDraft;
+
+export interface CreateFanpageNotePayload {
+    note: string;
+    /** Tạo kèm khách từ ghi chú (cần thêm quyền customers.create). */
+    lead?: FanpageLeadDraft;
 }
 
 export interface CreateFanpagePayload {
@@ -526,8 +577,15 @@ export const fanpagesApi = {
     listNotes: async (fanpageId: number): Promise<FanpageNote[]> =>
         (await axiosInstance.get<FanpageNote[]>(`/fanpages/${fanpageId}/notes`)).data,
 
-    createNote: async (fanpageId: number, note: string): Promise<FanpageNote> =>
-        (await axiosInstance.post<FanpageNote>(`/fanpages/${fanpageId}/notes`, { note })).data,
+    createNote: async (fanpageId: number, payload: CreateFanpageNotePayload): Promise<FanpageNote> =>
+        (await axiosInstance.post<FanpageNote>(`/fanpages/${fanpageId}/notes`, payload)).data,
+
+    // ── GĐ5b: Data khách hàng (Lead) của Page ──
+    listLeads: async (fanpageId: number, params: FanpageLeadsParams): Promise<FanpageLeadsResponse> =>
+        (await axiosInstance.get<FanpageLeadsResponse>(`/fanpages/${fanpageId}/customers`, { params })).data,
+
+    createLead: async (fanpageId: number, payload: CreateFanpageLeadPayload): Promise<FanpageLeadRow> =>
+        (await axiosInstance.post<FanpageLeadRow>(`/fanpages/${fanpageId}/customers`, payload)).data,
 
     updateNote: async (fanpageId: number, noteId: number, note: string): Promise<FanpageNote> =>
         (await axiosInstance.patch<FanpageNote>(`/fanpages/${fanpageId}/notes/${noteId}`, { note })).data,

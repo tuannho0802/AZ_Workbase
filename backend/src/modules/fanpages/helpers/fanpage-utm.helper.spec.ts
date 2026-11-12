@@ -144,3 +144,31 @@ describe('closeRate / customersPerPost', () => {
         expect(customersPerPost(5, 0)).toBeNull();
     });
 });
+
+import { primaryPageByUtm, resolveCreditedPage } from './fanpage-utm.helper';
+
+describe('resolveCreditedPage (GĐ5b - 15.3/15.8, bất biến Σ)', () => {
+    const links = [
+        { fanpageId: 1, utmId: 10, isPrimary: true },
+        { fanpageId: 2, utmId: 10, isPrimary: false },
+        { fanpageId: 2, utmId: 11, isPrimary: true },
+    ];
+    const map = primaryPageByUtm(links);
+    const customers = [
+        { id: 1, fanpageId: null, utmId: 10 },
+        { id: 2, fanpageId: 2, utmId: null },
+        { id: 3, fanpageId: 2, utmId: 10 },
+        { id: 4, fanpageId: null, utmId: null },
+        { id: 5, fanpageId: null, utmId: 99 },
+    ];
+
+    it('thứ tự ưu tiên: fanpage_id > Page chính của UTM > chưa quy', () => {
+        expect(customers.map((c) => resolveCreditedPage(c, map))).toEqual([1, 2, 2, null, null]);
+    });
+
+    it('mỗi khách ghi công cho tối đa 1 Page: Σ các Page + chưa quy == tổng số khách', () => {
+        const credited = customers.map((c) => resolveCreditedPage(c, map));
+        const per = (id: number) => credited.filter((x) => x === id).length;
+        expect(per(1) + per(2) + credited.filter((x) => x == null).length).toBe(customers.length);
+    });
+});

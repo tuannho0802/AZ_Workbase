@@ -52,6 +52,11 @@ export class Customer {
   @JoinColumn({ name: 'utm_id' })
   utm: Utm | null;
 
+  // GĐ5b: Page ghi công TRỰC TIẾP cho khách (Lead nhập từ Page) - ưu tiên hơn UTM khi quy kết (PLAN_FANPAGE_ANALYTICS 15.3).
+  // Chỉ gán lúc tạo qua FanpageLeadsService; UpdateCustomerDto KHÔNG nhận trường này. Khai FK ở migration (không ManyToOne để tránh vòng entity).
+  @Column({ name: 'fanpage_id', type: 'int', nullable: true, default: null })
+  fanpageId: number | null;
+
   @Column({ name: 'sales_user_id', nullable: true, default: null })
   salesUserId: number | null;
 
