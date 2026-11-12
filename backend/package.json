@@ -37,6 +37,7 @@
     "zk:test": "ts-node -r tsconfig-paths/register src/integrations/zk-device/test-connection.ts",
     "b2:test-presign": "ts-node -r tsconfig-paths/register scripts/test-b2-presign.ts",
     "guides:sync": "ts-node -r tsconfig-paths/register scripts/guides-sync.ts",
+    "perf:fanpage": "ts-node -r tsconfig-paths/register scripts/perf-fanpage.ts",
     "templates:generate": "ts-node -r tsconfig-paths/register scripts/generate-import-templates.ts"
   },
   "dependencies": {

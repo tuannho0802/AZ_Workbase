@@ -114,6 +114,7 @@ backend/src/
 
 ```bash
 npm run guides:sync          # Đồng bộ guides-content/*.md -> DB (dry-run trước, rồi thêm --apply; báo XUNG ĐỘT nếu DB đã sửa tay trên UI)
+npm run perf:fanpage         # Đo hiệu năng Fanpage trên DB RIÊNG (chỉ localhost + tên DB chứa perf/test + PERF_CONFIRM=yes; --cleanup để xoá dữ liệu giả). KHÔNG chạy trên production
 npm run templates:generate    # Sinh file mẫu import Excel
 npm run seed | seed:customers | seed:backfill | seed:users | utm:backfill | audit:redact-secrets
 npm run import:data | import:clear | import:full

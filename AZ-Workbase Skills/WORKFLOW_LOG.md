@@ -8392,3 +8392,19 @@ Now [deploy]
 > - CHƯA chạy jest/vitest/nest build/next build. Cần chạy trước khi merge.
 
 ---
+
+## [2026-11-12 23:30] | GĐ6 kiểm chứng + GĐ7 - QA, tài liệu, rollout Fanpage | [Status: Success (BE tsc sạch; jest toàn BE 193 suite/3.054 test pass; nest build OK; FE vitest 147 file/1.374 test pass; next build OK; FE tsc sạch; migration M1-M5 chạy/revert/chạy lại OK trên MySQL 8.0.46)]
+**Actor:** Agent
+**Files Changed:**
+- `guides-content/fanpage.md` (viết lại đủ GĐ1-6, published)
+- `backend/scripts/perf-fanpage.ts` (MỚI, có chốt chặn an toàn) + `backend/package.json` (`perf:fanpage`) + `backend/README.md`
+- `backend/src/modules/fanpages/fanpage-permissions.contract.spec.ts` (MỚI, 19 test)
+- `PERMISSIONS.md` §2.20 + changelog, `PLAN_FANPAGE_ANALYTICS.md` (GĐ6 verified, GĐ7, bảng 4 role x tab, §13/§14)
+
+**Notes:**
+> - KHÔNG migration mới, KHÔNG permission key mới. C3 (ảnh Insights) vẫn chưa làm.
+> - Hiệu năng (MySQL cục bộ, Root Admin): 1.000 Page/60.000 bài - list 282ms, overview 288ms, today 251ms, rankings 354ms, export 798ms; truy vấn tăng theo lô 500 Page (không N+1).
+> - PHÁT HIỆN NGOÀI PHẠM VI: `migration:run` trên DB trống lỗi ở migration cũ `AddAssignedDateColumn1776053695502` (DROP INDEX không tồn tại) - chưa sửa, cần quyết định riêng.
+> - Việc người dùng phải làm: chạy migration (sau backup) trước deploy; `npm run guides:sync` (dry-run rồi --apply); click-through 4 role x tab (bảng ở PLAN GĐ7); đặt Uptime monitor gọi `/api/fanpages-cron/reminders` mỗi 30 phút.
+
+---

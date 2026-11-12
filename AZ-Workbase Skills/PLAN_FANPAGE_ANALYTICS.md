@@ -562,7 +562,7 @@ Mỗi giai đoạn **độc lập deploy được** và có giá trị riêng; k
 - [x] M5 `AddFanpageLeadLinks`; entity `customer.entity.ts` + `fanpage-note.entity.ts`.
 - [x] BE: `GET/POST /fanpages/:id/customers`; `FanpageNoteDto.lead?`; `fanpage-leads.service` (gọi `CustomersService.create`, KHÔNG viết lại luật tạo khách); sửa `fanpage-outcomes` theo 15.3 (nếu GĐ5 đã làm).
 - [x] FE: tab Drawer **Data khách hàng** + mục "Thêm khách" trong form ghi chú, gate `can('customers.view'|'customers.create')`.
-- **Hoàn thành khi:** các test ở 15.6 xanh; `tsc --noEmit`, `nest build`, jest, vitest pass. *(2026-11-12: code + spec đã viết; `tsc --noEmit` BE/FE + `nest build` sạch; jest/vitest CHƯA chạy theo yêu cầu.)*
+- **Hoàn thành khi:** các test ở 15.6 xanh; `tsc --noEmit`, `nest build`, jest, vitest pass. *(2026-11-12: code + spec đã viết; `tsc --noEmit` BE/FE + `nest build` sạch; jest/vitest CHƯA chạy theo yêu cầu.)* **→ 2026-11-12 (GĐ7): đã chạy toàn bộ, xem "Kết quả kiểm chứng" ở GĐ6.**
 
 ### GĐ6 — Hoàn thiện: B4, B5, A4, E5a, C3
 - [x] Dán nhiều link (BE bulk + FE xem trước).
@@ -571,14 +571,49 @@ Mỗi giai đoạn **độc lập deploy được** và có giá trị riêng; k
 - [x] **Xếp hạng (B5)** theo 3.8: `fanpage-rankings.service` + endpoint `stats/rankings` (gate `fanpage_rankings.view`, scope own/department/all); test: người nhập hộ không lên hạng, bài trùng URL không tính, sửa snapshot không tính thêm, thứ hạng tính trong tập người xem được thấy, `own` chỉ thấy dòng mình.
 - [ ] C3 ảnh Insights *(2026-11-12: CHƯA làm — tách plan riêng, không chặn GĐ6)*: **chỉ làm nếu** cơ chế upload hiện có dùng lại được (đối chiếu `PLAN_AVATAR_LEAVE_ATTACHMENT_BACKBLAZE_B2.md` và `leave-request-attachment`); nếu không, tách thành plan riêng, không chặn các mục khác.
 - [ ] (Không làm ở v1: E5b bài lên kế hoạch — Q8.)
-- **Trạng thái GĐ6 (2026-11-12):** code + spec đã viết; `tsc --noEmit` BE sạch, FE chỉ còn 4 lỗi `logo.png` có sẵn từ trước; jest/vitest **CHƯA chạy** theo yêu cầu.
+- **Kết quả kiểm chứng GĐ6 (2026-11-12, chạy thật trên bản pull `f537b27`):** BE `tsc --noEmit` sạch · `nest build` OK · `jest src/modules/fanpages` **31 suite / 432 test pass** · toàn bộ BE jest **193 suite / 3.054 test pass** · FE `vitest run` **147 file / 1.374 test pass** · `next build` OK (có route `/fanpage`) · FE `tsc --noEmit` sạch (không còn lỗi `logo.png`).
+- **Còn mở:** C3 (ảnh Insights) — tách plan riêng, không làm ở GĐ6/GĐ7.
 
-### GĐ7 — QA, tài liệu, rollout
-- [ ] Viết `guides-content/fanpage.md` (đặt `published: true`); cập nhật `PERMISSIONS.md` §2.20, `resource-labels.ts`, `audit-meta.ts`; `nav-guide-coverage.test` vẫn xanh (không thêm mục menu).
-- [ ] Bảng test 4 role × từng tab (mục 11); thử với ≥ 300 Page và ≥ 20.000 bài (seed giả) đo thời gian `list/overview/today`.
-- [ ] Thêm 1 dòng `WORKFLOW_LOG.md` mỗi GĐ hoàn tất (theo lệnh của bạn).
+### GĐ7 — QA, tài liệu, rollout *(2026-11-12)*
+- [x] Viết `guides-content/fanpage.md` (đã `published: true`, mô tả đủ các tab Hôm nay/Danh sách/Nhập số liệu/Thống kê/Đã lưu trữ, Drawer, Dán nhiều link, Loại bài, UTM, Lead, Xuất Excel, Nhắc việc, mục "Vì sao tôi không thấy…"); `PERMISSIONS.md` §2.20 bổ sung GĐ4/GĐ5/GĐ7 + ma trận seed; đối chiếu `resource-labels.ts` (10/10 resource có nhãn) và `audit-meta.ts` (31/31 action Fanpage có nhãn; 4 chuỗi `FANPAGE_*` còn lại là mã lỗi/enum, không phải action audit). `nav-guide-coverage.test` xanh (không thêm mục menu). **Sau khi merge: bạn chạy `npm run guides:sync` (dry-run rồi `--apply`) để bài lên DB.**
+- [x] Lưới an toàn mới `fanpage-permissions.contract.spec.ts` (19 test): mọi `@RequirePermission` của controller Fanpage đã seed + có nhãn + không route nào thiếu permission (trừ controller cron dùng `CRON_SECRET`).
+- [x] Migration M1–M5 chạy thật trên **MySQL 8.0.46** (8 file `1786370000000`…`1786394000000`): `migration:run` OK, `migration:revert` ×8 OK (xoá sạch bảng/key/cột), chạy lại OK; seed ra 17 permission + 48 dòng `role_permissions` + setting `fanpage.silent_days=3`; `schema:log` chỉ còn khác biệt **tên** FK/index tự đặt (không lệch cột). Giới hạn: DB nền dựng từ entity, vì chuỗi migration cũ **không replay được từ DB trống** (xem phát hiện bên dưới).
+- [x] Đo hiệu năng bằng `npm run perf:fanpage` (script mới, có chốt chặn: chỉ chạy trên DB `localhost` có tên chứa `perf`/`test` và `PERF_CONFIRM=yes`; `--cleanup` xoá dữ liệu giả). MySQL 8 cục bộ, người gọi Root Admin (scope `all`), median 5 lần đo:
 
----
+  | Endpoint | 300 Page / 20.000 bài | 1.000 Page / 60.000 bài | Số truy vấn (300 → 1.000) |
+  |---|---:|---:|---:|
+  | `GET /fanpages` (list) | 89 ms | 282 ms | 5 → 9 |
+  | `GET /fanpages/overview` | 92 ms | 288 ms | 6 → 10 |
+  | `GET /fanpages/today` | 71 ms | 251 ms | 2 → 3 |
+  | badge `fanpageToDo` | 80 ms | 214 ms | 2 → 3 |
+  | `stats/growth` | 30 ms | 125 ms | 3 → 5 |
+  | `stats/posts` | 30 ms | 94 ms | 2 → 3 |
+  | `stats/top-posts` | 46 ms | 163 ms | 3 → 5 |
+  | `stats/rankings` | 112 ms | 354 ms | 4 → 6 |
+  | `export` (dựng model) | 681 ms | 798 ms | 16 → 27 |
+
+  Đọc kết quả: **không có N+1** — số truy vấn không theo số dòng mà tăng theo **số lô 500 Page** (thiết kế X: `FANPAGE_BATCH_SIZE = 500`; 300 Page = 1 lô, 1.000 Page = 2 lô). Thời gian tăng gần tuyến tính theo dữ liệu. **Chưa đo:** độ trễ mạng tới DB production (Aiven) — mỗi truy vấn cộng thêm 1 RTT nên dự kiến cộng ≈ (số truy vấn × RTT); và chưa đo caller scope `own/department` (cần seed `role_permissions`). Nếu `list`/`overview` chậm trên production, việc đầu tiên là gộp bớt truy vấn trong mỗi lô.
+- [ ] **Bảng test thủ công 4 role × tab (bạn click-through trên bản deploy)** — kỳ vọng theo seed mặc định (`department_id IS NULL`); Admin có thể đã đổi ở trang Phân quyền nên đối chiếu ma trận thật trước:
+
+  | Hạng mục | Admin | Assistant | Manager | Employee |
+  |---|---|---|---|---|
+  | Tab mặc định khi vào `/fanpage` | Danh sách | Danh sách | Danh sách | **Hôm nay** (scope `own`) |
+  | Phạm vi Page thấy (`fanpages.view`) | Tất cả | Tất cả | Phòng ban quản lý | Của tôi |
+  | Tab Hôm nay / Danh sách / Đã lưu trữ | ✓ | ✓ | ✓ | ✓ |
+  | Tab Nhập số liệu (`fanpage_metrics.manage`) | ✓ | ✓ | ✓ | ✓ (chỉ Page của mình) |
+  | Tab Thống kê (`fanpage_stats.view`) | ✓ | ✓ | ✓ | ✓ |
+  | Khối Xếp hạng (`fanpage_rankings.view`) | ✓ all | ✓ all | ✓ department | ✗ ẩn |
+  | Cột Tiền nạp (`fanpage_revenue.view` ∩ khách ∩ `tab:deposits`) | ✓* | ✓* | ✓* | ✗ không có trường tiền |
+  | Nút Xuất Excel (`fanpages.export`) | ✓ | ✓ | ✓ | ✓ (Page của mình) |
+  | Nút Nền tảng / Tình trạng / Loại bài | ✓ | ✓ | ✗ | ✗ |
+  | Nút Thêm Page (`fanpages.create`) | ✓ | ✓ | ✓ | ✓ |
+  | Giao người phụ trách cho người khác | ✓ | ✓ | ✓ (trong phòng ban) | ✗ |
+  | Xoá Page / bài / ghi chú / số liệu | ✓ | ✗ | ✗ | ✗ |
+  | Tab Data khách hàng | theo `customers.view` | theo `customers.view` | theo `customers.view` | theo `customers.view` |
+
+  \* chỉ khi khách nằm trong phạm vi `customers.view` **và** `tab:deposits` không bị Admin ẩn với người xem. Kiểm thêm: (1) hai người cùng xem 1 Page có số khách khác nhau đúng theo phạm vi; (2) tắt `fanpage_stats.view` của một role → tab Thống kê biến mất, URL `?tab=stats` quay về tab mặc định; (3) bấm thông báo `fanpage.silent` mở đúng Drawer.
+- [x] Thêm 1 dòng `WORKFLOW_LOG.md` (entry 2026-11-12 14:30).
+- **Phát hiện ngoài phạm vi GĐ7 (chưa sửa, chờ bạn quyết):** `npm run migration:run` trên DB trống **lỗi ở migration cũ `AddAssignedDateColumn1776053695502`** (`DROP INDEX IDX_88acd889… ON customers` không tồn tại) — chuỗi migration không dựng được môi trường mới từ đầu (CI/dev máy mới). Không liên quan Fanpage; theo quy ước không sửa migration cũ nên cần một cách xử lý riêng (ví dụ baseline schema).
 
 ## 11. Kế hoạch kiểm thử
 
@@ -619,20 +654,20 @@ Quy tắc báo cáo: chỉ báo "xong" sau khi chạy thật và dán kết qu�
 | Lộ tiền nạp qua tổ hợp số (ví dụ trừ nhau) | Cao | Chỉ Tổng nạp, không rút/nạp thực, bỏ hẳn trường khi bị ẩn `tab:deposits`, không hiện tiền ở danh sách/xếp hạng/export khi thiếu cổng |
 | Phụ thuộc kỷ luật gắn UTM đúng Page | Trung bình | Gợi ý "N UTM chưa thuộc Page nào" cho scope rộng; dòng "Chưa quy về Page" |
 | Migration trùng timestamp giữa nhiều tài khoản | Thấp | X23 |
-| Migration chưa từng chạy trên MySQL thật (`CreateFanpageOwners` còn treo theo log) | Trung bình | Chạy và click-through bản hiện tại trước khi bắt đầu GĐ1 |
+| Migration chưa từng chạy trên MySQL thật (`CreateFanpageOwners` còn treo theo log) | Thấp *(2026-11-12)* | M1–M5 đã chạy/revert/chạy lại thành công trên MySQL 8.0.46 (xem GĐ7); vẫn **backup DB trước khi chạy trên production** |
 
 ---
 
 ## 14. Checklist đồng bộ tài liệu/mã khi làm xong từng GĐ
 
-- [ ] `PERMISSIONS.md` §2.20 (8 key mới + seed + scope + quy tắc giao của các lớp quyền tiền/khách/xếp hạng, mục 7) và quy tắc Page chính/tham gia (3.7)
-- [ ] `frontend/src/lib/permissions/resource-labels.ts`
-- [ ] `frontend/src/lib/api/audit-meta.ts` + test
-- [ ] `backend/src/modules/notifications/catalog/*` + `frontend/src/lib/notifications/resolve-link.ts` (GĐ3)
-- [ ] `guides-content/fanpage.md` + `guide-slugs.ts` (không thêm slug mới vì không thêm menu)
-- [ ] `sidebar-badges` + `badge-cache-invalidation.middleware` (GĐ3)
-- [ ] `WORKFLOW_LOG.md` (append, khi bạn ra lệnh)
-- [ ] (v1.2) `PERMISSIONS.md`: ghi rõ Lead dùng lại `customers.*`, không key mới; thêm `GET/POST /fanpages/:id/customers` + `lead` của ghi chú; `guides-content/fanpage.md` mục Data khách hàng
+- [x] `PERMISSIONS.md` §2.20 (8 key mới + seed + scope + quy tắc giao của các lớp quyền tiền/khách/xếp hạng, mục 7) và quy tắc Page chính/tham gia (3.7)
+- [x] `frontend/src/lib/permissions/resource-labels.ts`
+- [x] `frontend/src/lib/api/audit-meta.ts` + test
+- [x] `backend/src/modules/notifications/catalog/*` + `frontend/src/lib/notifications/resolve-link.ts` (GĐ3)
+- [x] `guides-content/fanpage.md` + `guide-slugs.ts` (không thêm slug mới vì không thêm menu)
+- [x] `sidebar-badges` + `badge-cache-invalidation.middleware` (GĐ3)
+- [x] `WORKFLOW_LOG.md` (append, khi bạn ra lệnh) — đã ghi tới GĐ7
+- [x] (v1.2) `PERMISSIONS.md`: ghi rõ Lead dùng lại `customers.*`, không key mới; thêm `GET/POST /fanpages/:id/customers` + `lead` của ghi chú; `guides-content/fanpage.md` mục Data khách hàng
 
 ---
 

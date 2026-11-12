@@ -897,6 +897,11 @@ người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
     - Sửa/xoá Lead: dùng endpoint Khách hàng sẵn có (`customers.edit/delete`), **không** thêm endpoint. `UpdateCustomerDto` không nhận `fanpageId`.
     - **Quy kết (15.3, Q10)**: `customers.fanpage_id` ưu tiên hơn UTM; mỗi khách ghi công tối đa 1 Page; truy vấn theo UTM luôn thêm `fanpage_id IS NULL` → `Σ chính == Tổng DISTINCT` giữ nguyên. Hàm đối chiếu thuần: `resolveCreditedPage` (`helpers/fanpage-utm.helper.ts`).
     - FE: tab "Data khách hàng" chỉ render khi `can('customers.view')`; nút "Thêm khách" khi `can('customers.create')`; mục "Thêm khách hàng từ ghi chú này" khi flag Page `canManageNotes` + `can('customers.create')`. Không dùng `role === 'admin'`.
+  - **GĐ7 — QA & rollout (2026-11-12)** — KHÔNG migration mới, KHÔNG permission key mới. Chỉ thêm kiểm chứng + tài liệu:
+    - Lưới an toàn `fanpage-permissions.contract.spec.ts`: mọi key `fanpage*` dùng trong controller / `FANPAGE_FLAG_KEYS` phải (1) có trong migration `Seed*Fanpage*`, (2) có nhãn ở `resource-labels.ts`, (3) mọi route (trừ `fanpages-cron.controller` dùng `CRON_SECRET`) khai `@RequirePermission`. Thêm key mới mà quên seed/nhãn → jest đỏ.
+    - Seed mặc định (Toàn cục, `department_id IS NULL`): `fanpages.view/export/create/edit`, `fanpage_metrics.manage`, `fanpage_stats.view` = Admin/Assistant `all`, Manager `department`, Employee `own`; `fanpage_rankings.view` và `fanpage_revenue.view` = Admin/Assistant `all`, Manager `department`, **Employee không có**; `fanpage_metrics.delete` chỉ Admin; `fanpage_statuses.manage`/`fanpage_post_types.manage` chỉ Admin + Assistant. Admin có thể đã chỉnh ở trang Phân quyền — luôn đối chiếu ma trận thật.
+    - Đã chạy migration M1–M5 (8 file `1786370000000`…`1786394000000`) trên MySQL 8: up / revert ×8 / up lại đều OK; seed ra 17 permission + 48 `role_permissions` + setting `fanpage.silent_days`. Lưu ý: chuỗi migration CŨ không replay được từ DB trống (lỗi ở `AddAssignedDateColumn1776053695502`) — không liên quan Fanpage.
+    - Đo hiệu năng (`npm run perf:fanpage`): 1.000 Page / 60.000 bài, người gọi Root Admin → list ≈ 282 ms, overview ≈ 288 ms, today ≈ 251 ms, rankings ≈ 354 ms, export ≈ 798 ms; số truy vấn tăng theo số lô 500 Page, không N+1. Chưa đo scope own/department và độ trễ mạng production.
 
 ## 3. Lịch sử quyết định & rà soát
 
@@ -922,6 +927,7 @@ người chưa đọc") — xem `PLAN_NOTIFICATION_SYSTEM.md` mục 10.
 
 ---
 | 2026-10-16 | Rà soát lại docs sau Security/Retention P3–P8: đọc trực tiếp controller của `security`, `bulk-operations`, `retention`, `system`, `storage`, `ui-visibility`, `sidebar-badges`, `customer-statuses`, `assignment-groups` | Thêm §2.16–§2.19, bổ sung `GET /system/health` vào §2.15, đổi mục 4 (2 việc nice-to-have đã xong) | Xem từng mục tương ứng; migration `1786335000000`, `1786340000000`, `1786350000000` |
+| 2026-11-12 | Fanpage GĐ6 kiểm chứng + GĐ7 QA: chạy thật jest/vitest/build, migration M1–M5 trên MySQL 8, đo hiệu năng, thêm `fanpage-permissions.contract.spec.ts`, viết lại `guides-content/fanpage.md` | Không đổi quy tắc phân quyền; xem §2.20 (GĐ7) và `PLAN_FANPAGE_ANALYTICS.md` |
 
 ## 4. Việc cần làm tiếp theo
 
