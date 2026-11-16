@@ -168,3 +168,39 @@ body {
     animation: none;
   }
 }
+/* ────────────────────────────────────────────────────────────────────
+   M0 - Nền tảng Mobile (PLAN_MOBILE_SIDEBAR.md). Ngưỡng mobile = 991.98px,
+   KHỚP `MOBILE_MAX_WIDTH` ở lib/hooks/useIsMobile.ts - đổi 1 chỗ phải đổi cả 2.
+   ──────────────────────────────────────────────────────────────────── */
+:root {
+  --app-gutter: 24px; /* lề + padding của khung nội dung (desktop) */
+}
+@media (max-width: 991.98px) {
+  :root {
+    --app-gutter: 12px;
+  }
+  /* iOS Safari tự zoom trang khi focus ô nhập có chữ < 16px -> ép 16px cho input trên mobile. */
+  .ant-input,
+  .ant-input-number-input,
+  .ant-select-selection-search-input,
+  .ant-picker-input > input,
+  textarea.ant-input {
+    font-size: 16px !important;
+  }
+}
+/* Vùng bấm tối thiểu ~40px cho nút icon trên mobile (gắn class này vào nút cần chạm). */
+.touch-target {
+  min-width: 40px;
+  min-height: 40px;
+}
+/* Chừa chỗ cho thanh Home/notch của thiết bị. */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* Drawer điều hướng (Sidebar trên mobile) - nền tối khớp Sider, nút đóng sáng màu. */
+.az-nav-drawer .ant-drawer-close {
+  color: rgba(255, 255, 255, 0.85);
+}
+.az-nav-drawer .ant-drawer-header {
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+}

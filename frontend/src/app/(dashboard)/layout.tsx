@@ -2,18 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
-import { Layout, Menu, Avatar, Dropdown, Button, Tag } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Button, Tag, Drawer } from 'antd';
 import {
   LogoutOutlined,
   UserOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  MenuOutlined,
   HomeOutlined,
   CalendarOutlined,
 } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { getVisibleNavItems, NAV_ITEMS } from '@/lib/nav-config';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
+import { useIsMobile } from '@/lib/hooks/useIsMobile';
 import { useSidebarBadgeCounts } from '@/lib/hooks/useSidebarBadgeCounts';
 import { getUserActive, subscribeUserActivity } from '@/lib/hooks/useUserActivity';
 import { useCachedImage, buildImageCacheKey } from '@/lib/hooks/useCachedImage';
@@ -104,6 +106,9 @@ export default function DashboardLayout({
   const { getRoleColor } = useRoleColorMap();
   const [selectedKey, setSelectedKey] = useState('customers');
   const [collapsed, setCollapsed] = useState(false);
+  // S1 (PLAN_MOBILE_SIDEBAR.md): < 992px -> Sidebar cố định được thay bằng Drawer mở từ nút hamburger ở Header.
+  const isMobile = useIsMobile();
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const badgeCounts = useSidebarBadgeCounts();
   const [todayLabel, setTodayLabel] = useState('');
 
@@ -324,6 +329,11 @@ export default function DashboardLayout({
     setSelectedKey(newKey);
   }, [pathname]);
 
+  // Đổi trang hoặc đổi cỡ màn hình (xoay/resize) -> luôn đóng Drawer, tránh kẹt Drawer mở khi bấm Back.
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname, isMobile]);
+
   useEffect(() => {
     if (isHydrated && !isAuthenticated) {
       // Force a clean redirect to clear any bad state
@@ -356,59 +366,89 @@ export default function DashboardLayout({
     );
   }
 
+  const handleNavigate = (path: string) => {
+    router.push(path);
+    if (isMobile) setDrawerOpen(false);
+  };
+
+  // Menu dùng CHUNG cho Sider (desktop) và Drawer (mobile) - cùng `getVisibleNavItems` nên 2 nơi luôn khớp nhau.
+  const navMenu = (
+    <Menu
+      theme="dark"
+      mode="inline"
+      selectedKeys={[selectedKey]}
+      style={isMobile ? { borderInlineEnd: 0 } : undefined}
+      items={[
+        {
+          key: 'home',
+          icon: <HomeOutlined />,
+          label: 'Trang chủ',
+          onClick: () => handleNavigate('/'),
+        },
+        // Toàn bộ mục còn lại lấy từ nav-config.tsx - CÙNG 1 nguồn với
+        // trang chủ (/) - sửa role-gate hay thêm/bớt mục chỉ cần sửa 1
+        // chỗ duy nhất, không lệch giữa sidebar và trang chủ.
+        ...getVisibleNavItems(user?.role, can, user?.isRootAdmin).map((item) => ({
+          key: item.key,
+          icon: item.icon,
+          label: (
+            <CountBadge {...getNavBadgeProps(item.key, badgeCounts)}>
+              {item.label}
+            </CountBadge>
+          ),
+          onClick: () => handleNavigate(item.path),
+        })),
+      ]}
+    />
+  );
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Sider 
-        theme="dark" 
-        collapsible 
-        collapsed={collapsed} 
-        onCollapse={setCollapsed}
-        width={220}
-        collapsedWidth={64}
-        trigger={null}
-      >
-        <div className="p-4 flex items-center justify-between">
-          {!collapsed && (
-            <div className="text-white text-xl font-bold truncate">
-              AZWorkbase
-            </div>
-          )}
-          <Button
-            type="text"
-            icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
-            onClick={handleToggleSidebar}
-            style={{ color: 'white', marginLeft: collapsed ? 'auto' : 0, marginRight: collapsed ? 'auto' : 0 }}
-          />
-        </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[selectedKey]}
-          items={[
-            {
-              key: 'home',
-              icon: <HomeOutlined />,
-              label: 'Trang chủ',
-              onClick: () => router.push('/'),
-            },
-            // Toàn bộ mục còn lại lấy từ nav-config.tsx - CÙNG 1 nguồn với
-            // trang chủ (/) - sửa role-gate hay thêm/bớt mục chỉ cần sửa 1
-            // chỗ duy nhất, không lệch giữa sidebar và trang chủ.
-            ...getVisibleNavItems(user?.role, can, user?.isRootAdmin).map((item) => ({
-              key: item.key,
-              icon: item.icon,
-              label: (
-                <CountBadge {...getNavBadgeProps(item.key, badgeCounts)}>
-                  {item.label}
-                </CountBadge>
-              ),
-              onClick: () => router.push(item.path),
-            })),
-          ]}
-        />
-      </Sider>
+      {!isMobile && (
+        <Sider 
+          theme="dark" 
+          collapsible 
+          collapsed={collapsed} 
+          onCollapse={setCollapsed}
+          width={220}
+          collapsedWidth={64}
+          trigger={null}
+        >
+          <div className="p-4 flex items-center justify-between">
+            {!collapsed && (
+              <div className="text-white text-xl font-bold truncate">
+                AZWorkbase
+              </div>
+            )}
+            <Button
+              type="text"
+              icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              onClick={handleToggleSidebar}
+              style={{ color: 'white', marginLeft: collapsed ? 'auto' : 0, marginRight: collapsed ? 'auto' : 0 }}
+            />
+          </div>
+          {navMenu}
+        </Sider>
+      )}
 
-      <Layout style={{ flex: 1, overflow: 'hidden' }}>
+      {isMobile && (
+        <Drawer
+          placement="left"
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          size="min(280px, 85vw)"
+          rootClassName="az-nav-drawer"
+          title={<span style={{ color: '#fff', fontWeight: 700 }}>AZWorkbase</span>}
+          styles={{
+            header: { background: '#001529', borderBottom: '1px solid rgba(255,255,255,0.12)' },
+            body: { padding: 0, background: '#001529', paddingBottom: 'env(safe-area-inset-bottom, 0px)' },
+          }}
+        >
+          {navMenu}
+        </Drawer>
+      )}
+
+      <Layout style={{ flex: 1, overflow: 'hidden', minWidth: 0 }}>
         <Header
           // ⚠️ Bug đã fix trước đó: AntD Layout.Header mặc định nền TỐI
           // (#001529) dù Sider để theme="dark" - Header không tự ăn theo.
@@ -418,7 +458,7 @@ export default function DashboardLayout({
           // tối. Dùng inline `style` để CHẮC CHẮN thắng mọi CSS khác.
           style={{
             background: '#fff',
-            paddingInline: 24,
+            paddingInline: isMobile ? 12 : 24,
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -428,11 +468,21 @@ export default function DashboardLayout({
             zIndex: 1,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 14, minWidth: 0 }}>
+            {isMobile && (
+              <Button
+                type="text"
+                aria-label="Mở menu"
+                icon={<MenuOutlined />}
+                onClick={() => setDrawerOpen(true)}
+                className="touch-target"
+              />
+            )}
             <div
               style={{
-                width: 40,
-                height: 40,
+                width: isMobile ? 32 : 40,
+                height: isMobile ? 32 : 40,
+                flexShrink: 0,
                 borderRadius: 10,
                 background: '#f0f7ff',
                 color: '#1890ff',
@@ -444,22 +494,33 @@ export default function DashboardLayout({
             >
               {PAGE_META[selectedKey]?.icon ?? <HomeOutlined />}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.6, color: '#94a3b8', textTransform: 'uppercase' }}>
-                AZWorkbase
-              </span>
-              <span style={{ fontSize: 17, fontWeight: 600, color: '#0f172a' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25, minWidth: 0 }}>
+              {!isMobile && (
+                <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: 0.6, color: '#94a3b8', textTransform: 'uppercase' }}>
+                  AZWorkbase
+                </span>
+              )}
+              <span
+                style={{
+                  fontSize: isMobile ? 16 : 17,
+                  fontWeight: 600,
+                  color: '#0f172a',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 {PAGE_META[selectedKey]?.label ?? 'Trang chủ'}
               </span>
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 4 : 20, flexShrink: 0 }}>
             {/* Ô tìm nhanh - mở command palette, placeholder gợi ý Ctrl + K (PLAN_HARDENING P8) */}
             <HeaderSearchTrigger />
             {/* Nút "Xem hướng dẫn trang này" - tự ẩn nếu bài chưa có/không thuộc đối tượng của người xem (PLAN_GUIDES_CONTENT §2.4) */}
             <PageGuideButton navKey={selectedKey} />
-            {todayLabel && (
+            {!isMobile && todayLabel && (
               <span style={{ fontSize: 13, color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <CalendarOutlined />
                 {todayLabel}
@@ -467,10 +528,23 @@ export default function DashboardLayout({
             )}
             {/* Chuông thông báo (Notification Phase 4) - polling 60s + toast */}
             <NotificationBell />
-            <div style={{ width: 1, height: 28, background: '#eef0f2' }} />
+            {!isMobile && <div style={{ width: 1, height: 28, background: '#eef0f2' }} />}
             <Dropdown
+              // Mobile không có hover -> mở bằng chạm.
+              trigger={isMobile ? ['click'] : ['hover']}
               menu={{
                 items: [
+                  // Mobile ẩn tên/role ở Header cho gọn -> đưa lên đầu menu avatar.
+                  ...(isMobile
+                    ? [
+                        {
+                          key: 'user-info',
+                          disabled: true,
+                          label: `${user?.name ?? ''} · ${ROLE_LABEL[user?.role ?? ''] ?? user?.role ?? ''}`,
+                        },
+                        { type: 'divider' as const },
+                      ]
+                    : []),
                   {
                     key: 'logout',
                     icon: <LogoutOutlined />,
@@ -480,12 +554,13 @@ export default function DashboardLayout({
                 ],
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <div className="touch-target" style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                 <Avatar
                   src={sidebarAvatarSrc || user?.avatarUrl || undefined}
                   icon={!user?.avatarUrl ? <UserOutlined /> : undefined}
                   style={{ background: 'linear-gradient(135deg, #1890ff 0%, #0a3d91 100%)' }}
                 />
+                {!isMobile && (
                 <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
                   <span style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>{user?.name}</span>
                   <Tag
@@ -495,20 +570,21 @@ export default function DashboardLayout({
                     {ROLE_LABEL[user?.role ?? ''] ?? user?.role}
                   </Tag>
                 </div>
+                )}
               </div>
             </Dropdown>
           </div>
         </Header>
 
         <Content 
-          className="m-6 overflow-auto" 
+          className={`${isMobile ? 'm-2' : 'm-6'} overflow-auto`}
           style={{ 
             background: '#fff', 
             borderRadius: '8px',
             minHeight: '280px'
           }}
         >
-          <div style={{ padding: '24px' }}>
+          <div style={{ padding: isMobile ? 12 : 24 }}>
             {children}
           </div>
         </Content>
@@ -523,7 +599,7 @@ export default function DashboardLayout({
           style={{
             background: '#fafbfc',
             borderTop: '1px solid #eef0f2',
-            padding: '18px 24px',
+            padding: isMobile ? '12px 12px' : '18px 24px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -535,9 +611,11 @@ export default function DashboardLayout({
             <BrandMark size={30} />
             <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
               <span style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>AZWorkbase</span>
-              <span style={{ fontSize: 12, color: '#94a3b8' }}>
-                Hệ thống quản lý dữ liệu Marketing &amp; Khách hàng
-              </span>
+              {!isMobile && (
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>
+                  Hệ thống quản lý dữ liệu Marketing &amp; Khách hàng
+                </span>
+              )}
             </div>
           </div>
           <span style={{ fontSize: 12, color: '#94a3b8' }}>

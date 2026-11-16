@@ -1,3 +1,4 @@
+import type { Viewport } from 'next';
 import { ConfigProvider } from 'antd';
 import viVN from 'antd/locale/vi_VN';
 import 'antd/dist/reset.css';
@@ -5,6 +6,14 @@ import 'flag-icons/css/flag-icons.min.css';
 import './globals.css';
 import { AntdAppProvider } from '@/components/common/AntdAppProvider';
 import { BotIdClient } from 'botid/client';
+
+// M0 (PLAN_MOBILE_SIDEBAR.md): viewport tường minh + `viewportFit: 'cover'` để dùng được safe-area
+// (`env(safe-area-inset-*)`) trên thiết bị tai thỏ. KHÔNG đặt maximumScale/userScalable - giữ khả năng phóng to (a11y).
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
 
 export const metadata = {
   title: 'AZWorkbase',
