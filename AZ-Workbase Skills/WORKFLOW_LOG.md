@@ -8545,3 +8545,17 @@ Now [deploy]
 > - Không có BE mới, không migration.
 
 ---
+
+## [2026-11-26 22:00] | Fix lỗi tsc/build FE ở layout.mobile.test.tsx | [Status: Success (tsc sạch, vitest file này 19 pass, `next build` thành công)]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/app/(dashboard)/layout.mobile.test.tsx` — khai báo kiểu `can` trong mock `h`
+
+**Root Cause:**
+> `can: (_k: string) => true` bị TS suy luận kiểu trả về literal `true`, nên `h.can = () => false` (dòng 137, 193) báo TS2322. Lỗi có sẵn từ commit 36a92b6, làm `npm run build` và CI `tsc --noEmit` fail.
+
+**Solution:**
+> Ép kiểu `((_k: string) => true) as (_k: string) => boolean`. Chỉ sửa file test, không đổi logic.
+
+---

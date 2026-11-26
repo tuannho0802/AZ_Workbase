@@ -7,7 +7,7 @@ import { VIEWPORTS, resetViewport, setViewport } from '@/test-utils/viewport';
 const h = vi.hoisted(() => ({
   push: vi.fn(),
   pathname: '/customers',
-  can: (_k: string) => true,
+  can: ((_k: string) => true) as (_k: string) => boolean,
   badges: {} as Record<string, number>,
   state: {
     user: { id: 1, name: 'Nguyễn Văn Test', role: 'admin', isRootAdmin: false, avatarUrl: null, avatarKey: null },
