@@ -1210,7 +1210,7 @@ export class PeriodicTasksService {
    */
   async getAssignableDepartmentIds(userId: number, userRole: string, scope?: string | null): Promise<number[] | null> {
     if (userRole === Role.ADMIN || scope === PermissionScope.ALL) return null;
-    if (scope === PermissionScope.DEPARTMENT) return this.getManagedDepartmentIds(userId);
+    if (scope === PermissionScope.DEPARTMENT) return this.getScopeDepartmentIds(userId);
     return null;
   }
 
@@ -1220,6 +1220,19 @@ export class PeriodicTasksService {
     if (departmentId == null || !allowed.includes(departmentId)) {
       throw new ForbiddenException(`${label} phải thuộc phòng ban bạn quản lý`);
     }
+  }
+
+  /**
+   * Phạm vi "Phòng ban quản lý" (scope `department`) = phòng ban được gán quản lý (department_managers)
+   * HỢP với phòng ban của CHÍNH user (Employee chưa gán Manager vẫn xử lý được cùng phòng ban).
+   * Phải khớp với subquery UNION ở `PeriodicTaskAccessHelper` / `PeriodicTaskPerformanceService`.
+   */
+  async getScopeDepartmentIds(userId: number): Promise<number[]> {
+    const managed = await this.getManagedDepartmentIds(userId);
+    const me = await this.userRepo.findOne({ where: { id: userId }, select: ['id', 'departmentId'] as any });
+    const ids = new Set<number>(managed);
+    if (me?.departmentId != null) ids.add(me.departmentId);
+    return [...ids];
   }
 
   /** Dùng nội bộ Phase 2 (rollup) - lấy danh sách id phòng ban user đang quản lý. */

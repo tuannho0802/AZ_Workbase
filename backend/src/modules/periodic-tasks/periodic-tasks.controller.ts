@@ -66,12 +66,12 @@ export class PeriodicTasksController {
     return this.periodicTasksService.create(dto, user.id, { role: user.role, scope });
   }
 
-  /** Phòng ban mà người gọi đang quản lý - FE dùng lọc dropdown Người/Phòng ban khi scope = department. */
+  /** Phòng ban trong phạm vi scope department của người gọi (quản lý + phòng ban của chính mình) - FE dùng lọc dropdown Người/Phòng ban khi scope = department. */
   @Get('managed-departments')
   @RequirePermission('periodic_tasks.view')
-  @ApiOperation({ summary: 'Danh sách id phòng ban người gọi đang quản lý' })
+  @ApiOperation({ summary: 'Danh sách id phòng ban trong phạm vi scope department (quản lý + phòng ban của mình)' })
   async managedDepartments(@GetUser('id') userId: number) {
-    return { departmentIds: await this.periodicTasksService.getManagedDepartmentIds(userId) };
+    return { departmentIds: await this.periodicTasksService.getScopeDepartmentIds(userId) };
   }
 
   @Get()

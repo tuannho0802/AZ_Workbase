@@ -8496,3 +8496,20 @@ Now [deploy]
 > - Trang `/hieu-suat-cong-viec` chưa đổi.
 
 ---
+
+## [2026-11-26 19:10] | Scope "Phòng ban quản lý" nay gồm cả phòng ban của chính user (Employee chưa gán Manager) | [Status: Success (BE tsc sạch, jest periodic-tasks 20 suite/302 test pass; CHƯA chạy `next build`, chưa thử trên trình duyệt)]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/helpers/periodic-task-access.helper.ts`, `periodic-task-performance.service.ts` — subquery scope `department` = `department_managers` UNION phòng ban của chính user (4 chỗ: xem Task, Hiệu suất x3)
+- `.../periodic-tasks.service.ts` — `getScopeDepartmentIds()` (quản lý ∪ phòng ban mình) dùng cho kiểm tra gán người/phòng ban
+- `.../periodic-tasks.controller.ts` — `GET /periodic-tasks/managed-departments` trả `getScopeDepartmentIds`
+- `.../periodic-tasks.service.spec.ts` — test cùng phòng ban không cần Manager
+
+**Root Cause:**
+> Patch trước chỉ tính phòng ban trong `department_managers` nên Employee chưa được gán Manager có scope department nhưng dropdown rỗng.
+
+**Notes:**
+> - FE không đổi (hook dùng lại endpoint). Phạm vi XEM cũng đổi theo để Task vừa tạo cho phòng mình không biến mất.
+
+---

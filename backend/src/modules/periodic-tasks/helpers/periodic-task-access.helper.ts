@@ -13,7 +13,8 @@ import { PeriodicTask } from '../../../database/entities/periodic-task.entity';
  *  all                       | Tất cả                              | = phạm vi Xem  | Không*
  *  department                | Chỉ Task có department_id thuộc     | = phạm vi Xem  | Không*
  *                            | phòng ban mình quản lý (department_ |                |
- *                            | managers)                            |                |
+ *                            | managers) HOẶC phòng ban của chính  |                |
+ *                            | mình (đổi 2026-11-26)                |                |
  *  own                       | Chỉ Task mình tạo, HOẶC mình là     | = phạm vi Xem  | Không*
  *                            | Phụ trách CHÍNH (primary_assignee_  |                |
  *                            | id), HOẶC mình là Phụ trách PHỤ     |                |
@@ -56,7 +57,7 @@ export class PeriodicTaskAccessHelper {
     if (scope === PermissionScope.DEPARTMENT) {
       query.andWhere(
         'task.department_id IN ' +
-        '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId)',
+        '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :accessManagerId UNION SELECT u.department_id FROM users u WHERE u.id = :accessManagerId)',
         { accessManagerId: userId },
       );
       return query;

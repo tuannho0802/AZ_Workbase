@@ -304,7 +304,7 @@ export class PeriodicTaskPerformanceService {
     if (scope === PermissionScope.DEPARTMENT) {
       qb.andWhere(
         'task.department_id IN ' +
-          '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :perfManagerId)',
+          '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :perfManagerId UNION SELECT u.department_id FROM users u WHERE u.id = :perfManagerId)',
         { perfManagerId: user.id },
       );
       return qb;
@@ -340,7 +340,7 @@ export class PeriodicTaskPerformanceService {
     if (scope !== PermissionScope.DEPARTMENT) return qb; // 'all': không giới hạn thêm. 'own': targetUserId đã tự giới hạn đủ.
     qb.andWhere(
       'task.department_id IN ' +
-      '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :perfManagerId)',
+      '(SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :perfManagerId UNION SELECT u.department_id FROM users u WHERE u.id = :perfManagerId)',
       { perfManagerId: user.id },
     );
     return qb;
@@ -412,7 +412,7 @@ export class PeriodicTaskPerformanceService {
     if (!isRootAdmin && scope !== PermissionScope.ALL) {
       if (scope === PermissionScope.DEPARTMENT) {
         qb.andWhere(
-          'task.department_id IN (SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :perfSecManagerId)',
+          'task.department_id IN (SELECT dm.department_id FROM department_managers dm WHERE dm.user_id = :perfSecManagerId UNION SELECT u.department_id FROM users u WHERE u.id = :perfSecManagerId)',
           { perfSecManagerId: user.id },
         );
       } else {
