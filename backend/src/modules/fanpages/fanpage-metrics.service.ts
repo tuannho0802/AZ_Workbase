@@ -345,7 +345,7 @@ export class FanpageMetricsService {
         const scopes = await this.access.scopesForKey(user, 'fanpage_metrics.manage');
         requireViewScope(scopes);
         const pages = await this.scoped.load(user, scopes, { archived: 'false' });
-        return pages.filter((p) => isTrackedPage({ isActive: p.isActive, archivedAt: p.archivedAt, healthIsBlocking: p.healthStatus?.isBlocking ?? null }));
+        return pages.filter((p) => isTrackedPage({ archivedAt: p.archivedAt, healthIsBlocking: p.healthStatus?.isBlocking ?? null }));
     }
 
     private async currentRows(ids: number[], date: string): Promise<Map<number, FanpageMetricSnapshot>> {

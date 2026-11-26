@@ -40,7 +40,7 @@ const sameIds = (a: number[], b: number[]): boolean => {
 /**
  * Từ 1 dòng audit -> các sự kiện lịch sử (hàm thuần, có test). 1 lần UPDATE có thể sinh nhiều sự kiện.
  * Trường thiếu ở bản ghi cũ coi là "không biết" -> KHÔNG sinh sự kiện (tránh bịa lịch sử).
- * Lưu trữ/bỏ lưu trữ ngầm đổi `is_active` nên chỉ sinh sự kiện `archive`, không sinh thêm `tracking`.
+ * Sự kiện `tracking` chỉ còn để ĐỌC audit cũ (trước Patch 2); snapshot mới không còn `isActive` nên không sinh thêm.
  */
 export function diffFanpageAudit(
     action: string,

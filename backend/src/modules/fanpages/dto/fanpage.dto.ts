@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, Length, IsOptional, IsInt, IsBoolean, IsUrl, IsIn, IsArray, ArrayMinSize, ArrayMaxSize, ArrayUnique, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, Length, IsOptional, IsInt, IsUrl, IsIn, IsArray, ArrayMinSize, ArrayMaxSize, ArrayUnique, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
 
@@ -108,11 +108,6 @@ export class UpdateFanpageDto {
     @Min(1, { message: 'Mục tiêu bài/tuần tối thiểu là 1' })
     @Max(MAX_TARGET_POSTS_PER_WEEK, { message: `Mục tiêu bài/tuần tối đa là ${MAX_TARGET_POSTS_PER_WEEK}` })
     targetPostsPerWeek?: number | null;
-
-    @ApiPropertyOptional({ description: 'false = ngừng theo dõi' })
-    @IsOptional()
-    @IsBoolean()
-    isActive?: boolean;
 }
 
 export class FanpageQueryDto {
@@ -127,11 +122,6 @@ export class FanpageQueryDto {
     @Type(() => Number)
     @IsInt()
     ownerId?: number;
-
-    @ApiPropertyOptional({ enum: ['true', 'false'] })
-    @IsOptional()
-    @IsIn(['true', 'false'])
-    isActive?: 'true' | 'false';
 
     @ApiPropertyOptional({ description: 'Tìm theo tên hoặc link Page' })
     @IsOptional()

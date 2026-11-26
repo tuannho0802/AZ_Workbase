@@ -48,7 +48,6 @@ const snapshot = (p: Fanpage) => ({
     url: p.url,
     ownerId: p.ownerId,
     ownerIds: (p.owners ?? []).map((o) => o.id),
-    isActive: p.isActive,
     healthStatusId: p.healthStatusId ?? null,
     healthNote: p.healthNote ?? null,
     targetPostsPerWeek: p.targetPostsPerWeek ?? null,
@@ -158,7 +157,6 @@ export class FanpagesService {
                     url,
                     ownerId: ownerIds[0],
                     owners: ownerIds.map((id) => ({ id }) as User),
-                    isActive: true,
                     healthStatusId,
                     healthNote: blankToNull(dto.healthNote),
                     targetPostsPerWeek: dto.targetPostsPerWeek ?? null,
@@ -188,11 +186,10 @@ export class FanpagesService {
 
         const before = snapshot(page);
         const patch: Partial<
-            Pick<Fanpage, 'platformId' | 'name' | 'url' | 'ownerId' | 'isActive' | 'healthStatusId' | 'healthNote' | 'healthChangedAt' | 'targetPostsPerWeek'>
+            Pick<Fanpage, 'platformId' | 'name' | 'url' | 'ownerId' | 'healthStatusId' | 'healthNote' | 'healthChangedAt' | 'targetPostsPerWeek'>
         > = {};
 
         if (dto.name !== undefined && dto.name.trim() !== page.name) patch.name = dto.name.trim();
-        if (dto.isActive !== undefined && dto.isActive !== page.isActive) patch.isActive = dto.isActive;
 
         if (dto.healthStatusId !== undefined && dto.healthStatusId !== page.healthStatusId) {
             await this.assertHealthUsable(dto.healthStatusId);
@@ -270,25 +267,25 @@ export class FanpagesService {
     // ───────────── Lưu trữ / bỏ lưu trữ ─────────────
 
     /**
-     * Lưu trữ = đóng hẳn Page: ẩn khỏi danh sách mặc định, NGẦM đặt `is_active = false`, giữ nguyên toàn bộ lịch sử.
+     * Lưu trữ = đóng hẳn Page: ẩn khỏi danh sách mặc định, giữ nguyên toàn bộ lịch sử.
      * Quyền = `fanpages.edit` phủ tới Page (không tạo key riêng - PLAN mục 7). Ghi audit để timeline đọc được.
      */
     async archive(id: number, user: FanpageCaller) {
         const page = await this.access.assertPageAccess(user, 'fanpages.edit', id, 'Bạn không có quyền lưu trữ Page này');
         if (page.archivedAt != null) throw new ConflictException('Page này đã được lưu trữ');
         const before = snapshot(page);
-        await this.repo.update(id, { archivedAt: new Date(), isActive: false });
+        await this.repo.update(id, { archivedAt: new Date() });
         const fresh = await this.access.loadPage(id);
         this.auditService.logActionAsync(user.id, 'ARCHIVE_FANPAGE', 'fanpage', id, before, snapshot(fresh));
         return this.presentOne(fresh, user, await this.access.resolveScopes(user));
     }
 
-    /** Bỏ lưu trữ: Page quay lại danh sách và được theo dõi lại (`is_active = true`); người dùng có thể tắt theo dõi sau. */
+    /** Bỏ lưu trữ: Page quay lại danh sách; muốn tạm ngừng thì chọn Tình trạng "Tạm ngừng". */
     async unarchive(id: number, user: FanpageCaller) {
         const page = await this.access.assertPageAccess(user, 'fanpages.edit', id, 'Bạn không có quyền bỏ lưu trữ Page này');
         if (page.archivedAt == null) throw new ConflictException('Page này chưa được lưu trữ');
         const before = snapshot(page);
-        await this.repo.update(id, { archivedAt: null, isActive: true });
+        await this.repo.update(id, { archivedAt: null });
         const fresh = await this.access.loadPage(id);
         this.auditService.logActionAsync(user.id, 'UNARCHIVE_FANPAGE', 'fanpage', id, before, snapshot(fresh));
         return this.presentOne(fresh, user, await this.access.resolveScopes(user));

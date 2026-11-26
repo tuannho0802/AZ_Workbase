@@ -11,7 +11,6 @@ import {
     JoinTable,
     JoinColumn,
 } from 'typeorm';
-import { BooleanTransformer } from '../transformers/boolean.transformer';
 import { User } from './user.entity';
 import { FanpagePlatform } from './fanpage-platform.entity';
 import { FanpagePost } from './fanpage-post.entity';
@@ -61,10 +60,6 @@ export class Fanpage {
     })
     owners: User[];
 
-    // false = ngừng theo dõi (vẫn giữ lịch sử bài đăng/ghi chú).
-    @Column({ name: 'is_active', type: 'tinyint', default: 1, transformer: new BooleanTransformer() })
-    isActive: boolean;
-
     // Mục tiêu số bài/tuần (1-35); null = không đặt mục tiêu -> không có trạng thái `at_risk` (PLAN 3.2).
     @Column({ name: 'target_posts_per_week', type: 'tinyint', unsigned: true, nullable: true, default: null })
     targetPostsPerWeek: number | null;
@@ -83,7 +78,7 @@ export class Fanpage {
     @Column({ name: 'health_changed_at', type: 'timestamp', nullable: true, default: null })
     healthChangedAt: Date | null;
 
-    // Đã lưu trữ (ẩn khỏi danh sách mặc định, ngầm is_active = false, giữ nguyên lịch sử). null = chưa lưu trữ.
+    // Đã lưu trữ (ẩn khỏi danh sách mặc định, giữ nguyên lịch sử). null = chưa lưu trữ.
     @Column({ name: 'archived_at', type: 'timestamp', nullable: true, default: null })
     archivedAt: Date | null;
 

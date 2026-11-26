@@ -24,7 +24,7 @@ function build(opts: { existing?: Record<string, unknown> | null; prevFollowers?
         assertPageAccess: jest.fn().mockResolvedValue(page),
         scopesForKey: jest.fn().mockResolvedValue({ view: 'own', flagScopes: {}, managed: [] }),
     };
-    const tracked = (id: number) => ({ id, name: `P${id}`, url: 'u', isActive: true, archivedAt: null, healthStatus: null, platform: { id: 1, name: 'FB', color: 'blue' } });
+    const tracked = (id: number) => ({ id, name: `P${id}`, url: 'u', archivedAt: null, healthStatus: null, platform: { id: 1, name: 'FB', color: 'blue' } });
     const scoped = { load: jest.fn().mockResolvedValue(opts.scopedPages ?? [tracked(1), tracked(2)]) };
     const audit = { logActionAsync: jest.fn() };
     const svc = new FanpageMetricsService(repo as never, targetRepo as never, access as never, scoped as never, audit as never);
@@ -147,7 +147,7 @@ describe('FanpageMetricsService.bulk - lỗi theo từng dòng', () => {
         ]);
     });
     it('dùng scope của fanpage_metrics.manage (không phải fanpages.view) và chỉ Page đang theo dõi', async () => {
-        const paused = { id: 3, name: 'P3', url: 'u', isActive: false, archivedAt: null, healthStatus: null, platform: { id: 1, name: 'FB', color: 'x' } };
+        const paused = { id: 3, name: 'P3', url: 'u', archivedAt: null, healthStatus: { id: 6, name: 'Tạm ngừng', isBlocking: true }, platform: { id: 1, name: 'FB', color: 'x' } };
         const { svc, access, repo } = build({ scopedPages: [paused] });
         repo.findOne.mockResolvedValue(null);
         const r = await svc.bulk({ date: DATE, rows: [{ fanpageId: 3, followers: 1 }] } as never, user);

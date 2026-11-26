@@ -3,7 +3,6 @@ import { buildInsights, EMPTY_AGGREGATE, FANPAGE_BATCH_SIZE, FanpageInsightsServ
 // 2026-11-11 = Thứ Tư. Tuần Thứ Hai-CN: 2026-11-09 -> 2026-11-15. Cửa sổ 30 ngày: 2026-10-13 -> 2026-11-11.
 const TODAY = '2026-11-11';
 const page = (over: Record<string, unknown> = {}) => ({
-    isActive: true,
     archivedAt: null,
     targetPostsPerWeek: null,
     createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -50,7 +49,7 @@ describe('buildInsights', () => {
         expect(r.isTracked).toBe(false);
         expect(r.cadence.state).toBe('paused');
     });
-    it('tình trạng chặn (Bị khoá/Đã bỏ) -> paused dù đang is_active', () => {
+    it('tình trạng chặn (Bị khoá/Đã bỏ) -> paused (Tạm ngừng cũng là tình trạng chặn)', () => {
         const r = buildInsights(page({ healthStatus: { isBlocking: true } }) as never, agg({ lastPostDate: '2026-11-11' }), ctx);
         expect(r.cadence.state).toBe('paused');
     });

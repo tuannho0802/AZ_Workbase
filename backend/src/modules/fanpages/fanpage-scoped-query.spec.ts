@@ -59,13 +59,10 @@ describe('applyFanpageFilters', () => {
         applyFanpageFilters(only as never, { archived: 'true' });
         expect(only.calls.map(text)).toEqual(['f.archivedAt IS NOT NULL']);
     });
-    it('isActive truyền 1/0 (BooleanTransformer không chạy trong QueryBuilder)', () => {
-        const a = fakeQb();
-        applyFanpageFilters(a as never, { isActive: 'true', archived: 'all' });
-        expect(a.calls[0].params).toEqual({ act: 1 });
-        const b = fakeQb();
-        applyFanpageFilters(b as never, { isActive: 'false', archived: 'all' });
-        expect(b.calls[0].params).toEqual({ act: 0 });
+    it('KHÔNG còn bộ lọc isActive (Patch 2: bỏ công tắc Theo dõi) - archived=all không thêm điều kiện nào', () => {
+        const qb = fakeQb();
+        applyFanpageFilters(qb as never, { archived: 'all' });
+        expect(qb.andWhere).not.toHaveBeenCalled();
     });
     it('lọc nền tảng, tình trạng, người phụ trách', () => {
         const qb = fakeQb();

@@ -30,22 +30,19 @@ const input = (over: Partial<CadenceInput> = {}): CadenceInput => ({
 });
 
 describe('isTrackedPage', () => {
-    it('đang theo dõi, chưa lưu trữ, không có tình trạng -> true', () => {
-        expect(isTrackedPage({ isActive: true, archivedAt: null, healthIsBlocking: null })).toBe(true);
-        expect(isTrackedPage({ isActive: true, archivedAt: undefined, healthIsBlocking: undefined })).toBe(true);
+    it('chưa lưu trữ, không có tình trạng -> true', () => {
+        expect(isTrackedPage({ archivedAt: null, healthIsBlocking: null })).toBe(true);
+        expect(isTrackedPage({ archivedAt: undefined, healthIsBlocking: undefined })).toBe(true);
     });
     it('tình trạng không chặn -> true', () => {
-        expect(isTrackedPage({ isActive: true, archivedAt: null, healthIsBlocking: false })).toBe(true);
-    });
-    it('is_active = false -> false', () => {
-        expect(isTrackedPage({ isActive: false, archivedAt: null, healthIsBlocking: false })).toBe(false);
+        expect(isTrackedPage({ archivedAt: null, healthIsBlocking: false })).toBe(true);
     });
     it('đã lưu trữ -> false (Date hoặc chuỗi)', () => {
-        expect(isTrackedPage({ isActive: true, archivedAt: new Date(), healthIsBlocking: false })).toBe(false);
-        expect(isTrackedPage({ isActive: true, archivedAt: '2026-11-01 10:00:00', healthIsBlocking: false })).toBe(false);
+        expect(isTrackedPage({ archivedAt: new Date(), healthIsBlocking: false })).toBe(false);
+        expect(isTrackedPage({ archivedAt: '2026-11-01 10:00:00', healthIsBlocking: false })).toBe(false);
     });
     it('tình trạng is_blocking -> false', () => {
-        expect(isTrackedPage({ isActive: true, archivedAt: null, healthIsBlocking: true })).toBe(false);
+        expect(isTrackedPage({ archivedAt: null, healthIsBlocking: true })).toBe(false);
     });
 });
 

@@ -4,7 +4,7 @@ import { FanpageStatsService } from './fanpage-stats.service';
 jest.mock('../../common/utils/date-vn.util', () => ({ todayVnStr: () => '2026-11-12' }));
 
 const user = { id: 1, role: 'admin', departmentId: null } as never;
-const page = (id: number, over: Record<string, unknown> = {}) => ({ id, name: `P${id}`, isActive: true, archivedAt: null, healthStatus: null, targetPostsPerWeek: null, ...over });
+const page = (id: number, over: Record<string, unknown> = {}) => ({ id, name: `P${id}`, archivedAt: null, healthStatus: null, targetPostsPerWeek: null, ...over });
 
 function build(pages: Array<Record<string, unknown>>, series: Map<number, Array<{ date: string; value: number }>>) {
     const access = { scopesForKey: jest.fn().mockResolvedValue({ view: 'all', flagScopes: {}, managed: [] }), assertPageAccess: jest.fn() };

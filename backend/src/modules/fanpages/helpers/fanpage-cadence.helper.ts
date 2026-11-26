@@ -21,18 +21,17 @@ export const FANPAGE_STREAK_CAP = 30;
 export const FANPAGE_POSTS_WINDOW_DAYS = 30;
 
 export interface TrackedInput {
-    isActive: boolean;
     archivedAt: Date | string | null | undefined;
     /** Cờ `is_blocking` của tình trạng Page; null/undefined = chưa có tình trạng (coi như không chặn). */
     healthIsBlocking: boolean | null | undefined;
 }
 
 /**
- * isTracked = is_active = 1 AND archived_at IS NULL AND (health.is_blocking = 0 OR health IS NULL)  (PLAN 3.1).
+ * isTracked = archived_at IS NULL AND (health.is_blocking = 0 OR health IS NULL)  (PLAN 3.1).
  * Chỉ Page isTracked mới được tính vào "tổng Page", "im lặng", "nguy cơ", "Hôm nay", badge, nhắc việc.
  */
 export function isTrackedPage(p: TrackedInput): boolean {
-    return p.isActive === true && (p.archivedAt == null) && p.healthIsBlocking !== true;
+    return p.archivedAt == null && p.healthIsBlocking !== true;
 }
 
 /** Đọc setting `fanpage.silent_days`: số nguyên 1-30; thiếu/hỏng/ngoài khoảng -> mặc định 3. */

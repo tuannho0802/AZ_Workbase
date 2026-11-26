@@ -53,7 +53,7 @@ function build(over: { scopes?: Record<string, string | null>; binary?: boolean 
     hasBinary: jest.fn(async () => over.binary ?? true),
     managedDepartmentIds: jest.fn().mockResolvedValue([]),
     resolveScopes: jest.fn().mockResolvedValue({ view: 'own', flagScopes, managed: [] }),
-    loadPage: jest.fn(async (id: number): Promise<Record<string, unknown>> => ({ id, name: 'P', url: 'https://x.com/p', platformId: 1, ownerId: 7, isActive: true, owner: { departmentId: 3 }, owners: [{ id: 7, departmentId: 3 }] })),
+    loadPage: jest.fn(async (id: number): Promise<Record<string, unknown>> => ({ id, name: 'P', url: 'https://x.com/p', platformId: 1, ownerId: 7, owner: { departmentId: 3 }, owners: [{ id: 7, departmentId: 3 }] })),
     buildContext: jest.fn((p, uid) => ({ userId: uid, ownerIds: (p.owners ?? []).map((o: { id: number }) => o.id), ownerDepartmentIds: [3], managedDepartmentIds: [] })),
     flagsFor: jest.fn().mockReturnValue({}),
     assertPageAccess: jest.fn(),
@@ -140,7 +140,7 @@ describe('FanpagesService.create', () => {
 describe('FanpagesService.update', () => {
   it('scope edit không phủ tới Page -> 403', async () => {
     const { svc, access } = build();
-    access.loadPage.mockResolvedValue({ id: 1, ownerId: 99, url: 'u', name: 'n', platformId: 1, isActive: true, owner: { departmentId: 3 }, owners: [{ id: 99, departmentId: 3 }] });
+    access.loadPage.mockResolvedValue({ id: 1, ownerId: 99, url: 'u', name: 'n', platformId: 1, owner: { departmentId: 3 }, owners: [{ id: 99, departmentId: 3 }] });
     await expect(svc.update(1, { name: 'X' }, user)).rejects.toBeInstanceOf(ForbiddenException);
   });
 
@@ -162,7 +162,7 @@ describe('FanpagesService.update', () => {
   it('thêm/gỡ người phụ trách (scope all) -> addAndRemove đúng tập + ownerId = người đầu', async () => {
     const { svc, access, userRepo, flagScopes } = build({ scopes: { 'fanpages.edit': 'all' } });
     (flagScopes as Record<string, string | null>).canEdit = 'all';
-    access.loadPage.mockResolvedValue({ id: 1, ownerId: 7, url: 'u', name: 'n', platformId: 1, isActive: true, owner: { id: 7 }, owners: [{ id: 7, departmentId: 3 }, { id: 5, departmentId: 3 }] });
+    access.loadPage.mockResolvedValue({ id: 1, ownerId: 7, url: 'u', name: 'n', platformId: 1, owner: { id: 7 }, owners: [{ id: 7, departmentId: 3 }, { id: 5, departmentId: 3 }] });
     userRepo.findOne.mockResolvedValue({ id: 8, departmentId: 9 });
     txRepo.update.mockClear();
     relationOps.addAndRemove.mockClear();
@@ -175,7 +175,7 @@ describe('FanpagesService.update', () => {
     const { svc, access, flagScopes } = build({ scopes: { 'fanpages.edit': 'department' } });
     (flagScopes as Record<string, string | null>).canEdit = 'department';
     access.managedDepartmentIds.mockResolvedValue([3]);
-    access.loadPage.mockResolvedValue({ id: 1, ownerId: 7, url: 'u', name: 'n', platformId: 1, isActive: true, owner: { id: 7 }, owners: [{ id: 7, departmentId: 3 }, { id: 5, departmentId: 99 }] });
+    access.loadPage.mockResolvedValue({ id: 1, ownerId: 7, url: 'u', name: 'n', platformId: 1, owner: { id: 7 }, owners: [{ id: 7, departmentId: 3 }, { id: 5, departmentId: 99 }] });
     await expect(svc.update(1, { ownerIds: [7] }, user)).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
@@ -212,7 +212,7 @@ describe('FanpagesService.create - tình trạng Page + mục tiêu tuần', () 
 
 describe('FanpagesService.update - tình trạng, mục tiêu tuần, lưu trữ', () => {
   const pageRow = (over: Record<string, unknown> = {}) => ({
-    id: 1, ownerId: 7, url: 'u', name: 'n', platformId: 1, isActive: true, healthStatusId: 1, healthNote: null,
+    id: 1, ownerId: 7, url: 'u', name: 'n', platformId: 1, healthStatusId: 1, healthNote: null,
     targetPostsPerWeek: null, archivedAt: null, owner: { id: 7, departmentId: 3 }, owners: [{ id: 7, departmentId: 3 }], ...over,
   });
 
@@ -275,14 +275,14 @@ describe('FanpagesService.update - tình trạng, mục tiêu tuần, lưu trữ
 });
 
 describe('FanpagesService.archive / unarchive', () => {
-  const live = { id: 1, ownerId: 7, url: 'u', name: 'n', platformId: 1, isActive: true, archivedAt: null, owners: [{ id: 7 }] };
+  const live = { id: 1, ownerId: 7, url: 'u', name: 'n', platformId: 1, archivedAt: null, owners: [{ id: 7 }] };
 
   it('lưu trữ: đặt archivedAt + ngầm tắt theo dõi + audit ARCHIVE_FANPAGE', async () => {
     const { svc, repo, access, audit } = build();
     access.assertPageAccess.mockResolvedValue(live);
     await svc.archive(1, user);
     expect(access.assertPageAccess).toHaveBeenCalledWith(user, 'fanpages.edit', 1, expect.any(String));
-    expect(repo.update).toHaveBeenCalledWith(1, { archivedAt: expect.any(Date), isActive: false });
+    expect(repo.update).toHaveBeenCalledWith(1, { archivedAt: expect.any(Date) });
     expect(audit.logActionAsync).toHaveBeenCalledWith(7, 'ARCHIVE_FANPAGE', 'fanpage', 1, expect.objectContaining({ isArchived: false }), expect.any(Object));
   });
 
@@ -302,9 +302,9 @@ describe('FanpagesService.archive / unarchive', () => {
 
   it('bỏ lưu trữ: archivedAt = null + theo dõi lại + audit UNARCHIVE_FANPAGE', async () => {
     const { svc, repo, access, audit } = build();
-    access.assertPageAccess.mockResolvedValue({ ...live, archivedAt: new Date(), isActive: false });
+    access.assertPageAccess.mockResolvedValue({ ...live, archivedAt: new Date() });
     await svc.unarchive(1, user);
-    expect(repo.update).toHaveBeenCalledWith(1, { archivedAt: null, isActive: true });
+    expect(repo.update).toHaveBeenCalledWith(1, { archivedAt: null });
     expect(audit.logActionAsync).toHaveBeenCalledWith(7, 'UNARCHIVE_FANPAGE', 'fanpage', 1, expect.any(Object), expect.any(Object));
   });
 
@@ -316,7 +316,7 @@ describe('FanpagesService.archive / unarchive', () => {
 });
 
 describe('FanpagesService.list', () => {
-  const mk = (id: number) => ({ id, name: `P${id}`, platformId: 1, isActive: true, healthStatus: { id: 1, name: 'Bình thường', color: '#52c41a', isBlocking: false }, owners: [] });
+  const mk = (id: number) => ({ id, name: `P${id}`, platformId: 1, healthStatus: { id: 1, name: 'Bình thường', color: '#52c41a', isBlocking: false }, owners: [] });
 
   it('không có quyền xem -> 403 và không chạm DB', async () => {
     const { svc, access, scoped } = build();

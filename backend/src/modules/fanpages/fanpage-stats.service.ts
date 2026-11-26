@@ -170,7 +170,7 @@ export class FanpageStatsService {
         }
         const weeks = bucketPostsByWeek([...counts].map(([date, count]) => ({ date, count })), from, to);
         const weeklyTarget = pages
-            .filter((p) => isTrackedPage({ isActive: p.isActive, archivedAt: p.archivedAt, healthIsBlocking: p.healthStatus?.isBlocking ?? null }))
+            .filter((p) => isTrackedPage({ archivedAt: p.archivedAt, healthIsBlocking: p.healthStatus?.isBlocking ?? null }))
             .reduce((sum, p) => sum + (p.targetPostsPerWeek ?? 0), 0);
         return { from, to, weeks, totalPosts: weeks.reduce((s, w) => s + w.count, 0), weeklyTarget };
     }

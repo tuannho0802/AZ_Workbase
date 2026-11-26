@@ -55,14 +55,13 @@ export interface BuildInsightsCtx {
     silentDays: number;
 }
 
-type PageForInsights = Pick<Fanpage, 'isActive' | 'archivedAt' | 'targetPostsPerWeek' | 'createdAt' | 'owners'> & {
+type PageForInsights = Pick<Fanpage, 'archivedAt' | 'targetPostsPerWeek' | 'createdAt' | 'owners'> & {
     healthStatus?: { isBlocking: boolean } | null;
 };
 
 /** Gộp thuộc tính Page + số liệu bài -> `PageInsights`. Hàm thuần, KHÔNG chạm DB/đồng hồ (có test). */
 export function buildInsights(page: PageForInsights, agg: RawPostAggregate, ctx: BuildInsightsCtx): PageInsights {
     const isTracked = isTrackedPage({
-        isActive: page.isActive,
         archivedAt: page.archivedAt,
         healthIsBlocking: page.healthStatus?.isBlocking ?? null,
     });

@@ -8,7 +8,6 @@ import { FanpageCaller, FanpageScopes } from './fanpage-access.service';
 export interface FanpageSqlFilters {
     platformId?: number;
     ownerId?: number;
-    isActive?: 'true' | 'false';
     search?: string;
     healthStatusId?: number;
     /** Chỉ Page đang gắn UTM này (liên kết Page ↔ UTM, GĐ5). */
@@ -62,7 +61,6 @@ export function applyFanpageFilters(qb: WhereQb, q: FanpageSqlFilters): void {
     if (q.ownerId != null) {
         qb.andWhere('f.id IN (SELECT fo3.fanpage_id FROM fanpage_owners fo3 WHERE fo3.user_id = :ownerId)', { ownerId: q.ownerId });
     }
-    if (q.isActive) qb.andWhere('f.isActive = :act', { act: q.isActive === 'true' ? 1 : 0 });
     if (q.healthStatusId != null) qb.andWhere('f.healthStatusId = :healthStatusId', { healthStatusId: q.healthStatusId });
     if (q.utmId != null) qb.andWhere('f.id IN (SELECT fu5.fanpage_id FROM fanpage_utms fu5 WHERE fu5.utm_id = :utmId)', { utmId: q.utmId });
     if (q.search?.trim()) qb.andWhere('(f.name LIKE :s OR f.url LIKE :s)', { s: `%${escapeLike(q.search.trim())}%` });
@@ -101,12 +99,12 @@ export class FanpageScopedQuery {
         applyFanpageScope(qb, user, scopes);
         applyFanpageFilters(qb, filters);
 
-        qb.orderBy('f.isActive', 'DESC').addOrderBy('f.updatedAt', 'DESC').addOrderBy('f.id', 'DESC').addOrderBy('owners.name', 'ASC');
+        qb.orderBy('f.updatedAt', 'DESC').addOrderBy('f.id', 'DESC').addOrderBy('owners.name', 'ASC');
         return qb.getMany();
     }
 
     /**
-     * Page "đang theo dõi" TOÀN HỆ THỐNG (không áp scope người dùng) cho cron nhắc việc: đang bật theo dõi, chưa lưu trữ, tình trạng
+     * Page "đang theo dõi" TOÀN HỆ THỐNG (không áp scope người dùng) cho cron nhắc việc: chưa lưu trữ, tình trạng
      * KHÔNG chặn. Khớp ĐÚNG `isTrackedPage` (helper thuần) - nếu đổi định nghĩa "theo dõi" phải đổi cả 2 nơi.
      * `BooleanTransformer` không chạy trong QueryBuilder -> truyền thẳng 1/0.
      */
@@ -119,7 +117,6 @@ export class FanpageScopedQuery {
             .leftJoin('f.owners', 'owners')
             .addSelect(['owners.id', 'owners.name', 'owners.isActive'])
             .where('f.archivedAt IS NULL')
-            .andWhere('f.isActive = :act', { act: 1 })
             .andWhere('(health.id IS NULL OR health.isBlocking = :blk)', { blk: 0 })
             .orderBy('f.id', 'ASC')
             .getMany();
