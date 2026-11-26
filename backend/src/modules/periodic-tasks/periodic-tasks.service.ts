@@ -254,6 +254,7 @@ export class PeriodicTasksService {
       isLocked: task.isLocked,
       lockNote: task.lockNote,
       note: task.note,
+      productLink: task.productLink,
     };
   }
 
@@ -323,6 +324,7 @@ export class PeriodicTasksService {
       departmentId,
       createdById: userId,
       note: dto.note ?? null,
+      productLink: dto.productLink?.trim() || null,
       color: dto.color ?? null,
     });
 
@@ -891,6 +893,7 @@ export class PeriodicTasksService {
         dto.departmentId != null ? await this.departmentRepo.findOne({ where: { id: dto.departmentId } }) : null;
     }
     if (dto.note !== undefined) task.note = dto.note ?? null;
+    if (dto.productLink !== undefined) task.productLink = dto.productLink?.trim() || null; // '' / null = xoá link
     if (dto.color !== undefined) task.color = dto.color ?? null;
 
     task.updatedById = user.id;

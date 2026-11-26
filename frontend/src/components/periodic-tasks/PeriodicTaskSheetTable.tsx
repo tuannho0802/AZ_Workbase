@@ -10,7 +10,7 @@ import { TaskChainBadge } from './TaskTitlePill';
 import { LinkifiedText } from '@/components/common/LinkifiedText';
 import { getTaskCardBackground, resolveEntityColor } from '@/lib/utils/entityColor';
 import { getOverdueDays, isPastPeriodEnd, isManualOverdueActive, isTaskOverdue } from '@/lib/utils/periodicTaskOverdue';
-import { extractSheetLinks, groupTasksByAssignee, sheetNameColor, stripUrls } from '@/lib/utils/taskSheet';
+import { groupTasksByAssignee, linkLabel, safeHttpUrl, sheetNameColor } from '@/lib/utils/taskSheet';
 import { sortTasksByPeriodHierarchy, TaskChainInfo } from '@/lib/utils/taskLinkChains';
 
 const { Text } = Typography;
@@ -42,7 +42,7 @@ function TaskState({ task }: { task: PeriodicTask }) {
 
 /**
  * Bảng KIỂU SHEET cho 1 ngày (Xem theo Ngày): gom theo Người phụ trách chính (ô TÊN gộp dòng, màu riêng từng người),
- * mỗi Task 1 dòng: Nội dung | Tiến độ (ô tô màu trạng thái) | Link sản phẩm (URL trong Mô tả) | Ghi chú | Ngày thực hiện |
+ * mỗi Task 1 dòng: Nội dung | Tiến độ (ô tô màu trạng thái) | Link sản phẩm (field `productLink`, chỉ hiện khi có) | Ghi chú | Ngày thực hiện |
  * Deadline | Tình trạng | Thao tác. Chỉ đổi cách HIỂN THỊ - dữ liệu/RBAC/nút thao tác giữ nguyên (TaskActionsBar dùng chung).
  */
 export function PeriodicTaskSheetTable({ tasks, iconActions = true, chains, resolveChainTask, ...actions }: PeriodicTaskSheetTableProps) {
@@ -69,8 +69,7 @@ export function PeriodicTaskSheetTable({ tasks, iconActions = true, chains, reso
                 <tbody>
                     {groups.map((g) =>
                         g.tasks.map((task, idx) => {
-                            const links = extractSheetLinks(task.description);
-                            const descText = stripUrls(task.description);
+                            const productUrl = safeHttpUrl(task.productLink); // chỉ hiện khi CÓ link hợp lệ
                             const chain = chains?.get(task.id);
                             const statusColor = resolveEntityColor(task.status?.color);
                             const secondary = task.secondaryAssignees ?? [];
@@ -91,7 +90,11 @@ export function PeriodicTaskSheetTable({ tasks, iconActions = true, chains, reso
                                             )}
                                             {chain && resolveChainTask && <TaskChainBadge chain={chain} currentTaskId={task.id} resolveTask={resolveChainTask} />}
                                         </div>
-                                        {descText && <div style={{ color: token.colorTextSecondary, whiteSpace: 'pre-wrap' }}>{descText}</div>}
+                                        {task.description && (
+                                            <div style={{ color: token.colorTextSecondary, whiteSpace: 'pre-wrap' }}>
+                                                <LinkifiedText text={task.description} />
+                                            </div>
+                                        )}
                                         {secondary.length > 0 && (
                                             <div style={{ color: token.colorTextSecondary, fontSize: 12 }}>Phụ trách phụ: {secondary.map((u) => u.name).join(', ')}</div>
                                         )}
@@ -100,14 +103,10 @@ export function PeriodicTaskSheetTable({ tasks, iconActions = true, chains, reso
                                         {task.status?.name ?? '—'}
                                     </td>
                                     <td style={{ ...td, minWidth: 150 }}>
-                                        {links.length === 0 ? null : (
-                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                                {links.map((l) => (
-                                                    <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" title={l.url} style={{ textDecoration: 'underline' }}>
-                                                        {l.label}
-                                                    </a>
-                                                ))}
-                                            </div>
+                                        {productUrl && (
+                                            <a href={productUrl} target="_blank" rel="noopener noreferrer" title={productUrl} style={{ textDecoration: 'underline' }}>
+                                                {linkLabel(productUrl)}
+                                            </a>
                                         )}
                                     </td>
                                     <td style={{ ...td, minWidth: 140 }}>{task.note ? <LinkifiedText text={task.note} /> : null}</td>

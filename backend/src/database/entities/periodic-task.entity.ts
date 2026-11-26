@@ -116,6 +116,10 @@ export class PeriodicTask {
   @Column({ type: 'text', nullable: true })
   note: string | null;
 
+  /** Link sản phẩm (http/https) - không bắt buộc, hiện ở cột "Link sản phẩm" của bảng Xem theo Ngày. */
+  @Column({ name: 'product_link', type: 'varchar', length: 1000, nullable: true })
+  productLink: string | null;
+
   // Phase 5 (PLAN mục 2.9) - khoá/mở khoá 2 chiều tự do, KHÔNG cascade
   // xuống Task con qua `periodic_task_links` (mỗi Task tự quản lý độc lập).
   @Column({ name: 'is_locked', type: 'boolean', default: false })

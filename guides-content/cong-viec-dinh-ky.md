@@ -42,7 +42,7 @@ Trạng thái có mã hệ thống **in_review** ("Xem xét") được tính là
 
 ### Xem theo Ngày
 
-Việc được gộp theo từng ngày, mặc định mở đúng hôm nay (hoặc ngày gần nhất có việc). Đây là kiểu dễ nhất để biết hôm nay phải làm gì.
+Việc được gộp theo từng ngày, mặc định mở đúng hôm nay (hoặc ngày gần nhất có việc). Đây là kiểu dễ nhất để biết hôm nay phải làm gì. Mỗi ngày là một bảng gom theo người phụ trách chính, gồm các cột Tên, Nội dung công việc, Tiến độ, **Link sản phẩm** (chỉ có nội dung khi việc đó đã nhập link), Ghi chú, Ngày thực hiện, Deadline, Tình trạng và Thao tác.
 
 ```az-demo
 task-agenda
@@ -86,7 +86,7 @@ task-by-viewer persona=manager
 
 1. Bấm **Tạo Công việc mới**.
 2. Nhập **Tiêu đề**, chọn **Loại kỳ** và **Khoảng thời gian của kỳ**, chọn **Người phụ trách chính** (bắt buộc).
-3. Điền thêm nếu cần: **Mô tả**, **Phòng ban** (để trống thì tự theo người phụ trách), **Trạng thái**, **Màu Task**, **Ghi chú**, **Khách hàng liên quan** (cần quyền gắn Khách hàng), **Phụ trách phụ**: chọn người rồi bấm **Gán**.
+3. Điền thêm nếu cần: **Mô tả**, **Phòng ban** (để trống thì tự theo người phụ trách), **Trạng thái**, **Màu Task**, **Ghi chú**, **Link sản phẩm** (không bắt buộc, chỉ nhận link bắt đầu bằng http:// hoặc https://; xoá trắng để bỏ link), **Khách hàng liên quan** (cần quyền gắn Khách hàng), **Phụ trách phụ**: chọn người rồi bấm **Gán**.
 4. Bấm **OK** để lưu.
 
 Mẫu dưới đây là bản tĩnh của modal tạo việc, dữ liệu giả, bấm thử không lưu gì:

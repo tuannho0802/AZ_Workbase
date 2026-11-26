@@ -43,6 +43,8 @@ export const PERIODIC_TASK_FIELD_LABELS: Record<string, string> = {
   departmentId: 'Phòng ban',
   department: 'Phòng ban',
   color: 'Màu',
+  note: 'Ghi chú',
+  productLink: 'Link sản phẩm',
   isLocked: 'Đang khoá',
   lockNote: 'Ghi chú khoá',
   content: 'Nội dung',

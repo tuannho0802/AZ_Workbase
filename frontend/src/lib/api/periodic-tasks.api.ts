@@ -72,6 +72,8 @@ export interface PeriodicTask {
   updatedBy: RefUser | null;
   completedAt: string | null;
   note: string | null;
+  /** Link sản phẩm (http/https) - không bắt buộc; hiện ở cột "Link sản phẩm" của Xem theo Ngày. */
+  productLink: string | null;
   /** Màu Task (hex, vd '#FF5733') - CHỈ dùng hiển thị UI (Card/Kanban/
    * Calendar...), không mang ý nghĩa nghiệp vụ. `null` nếu chưa set lúc tạo. */
   color: string | null;
@@ -233,6 +235,8 @@ export interface CreatePeriodicTaskPayload {
   /** Bỏ trống sẽ auto-fill theo phòng ban của primaryAssigneeId lúc tạo. */
   departmentId?: number;
   note?: string;
+  /** Link sản phẩm (http/https, <= 1000 ký tự). Gửi '' hoặc null để XOÁ link; không gửi = giữ nguyên. */
+  productLink?: string | null;
   /** Hex 6 ký tự, vd '#FF5733' - không bắt buộc. */
   color?: string;
 }

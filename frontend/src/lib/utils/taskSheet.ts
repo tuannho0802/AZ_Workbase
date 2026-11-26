@@ -22,13 +22,6 @@ export function groupTasksByAssignee(tasks: PeriodicTask[]): SheetGroup[] {
     return Array.from(map.values()).sort((a, b) => a.assigneeName.localeCompare(b.assigneeName, 'vi'));
 }
 
-export interface SheetLink {
-    url: string;
-    label: string;
-}
-
-const URL_RE = /https?:\/\/[^\s<>"')]+/gi;
-
 /** Nhãn ngắn cho link: tên file nếu có đuôi (vd THAN_CU_BIT.mp4), ngược lại tên miền. */
 export function linkLabel(url: string): string {
     try {
@@ -40,19 +33,14 @@ export function linkLabel(url: string): string {
     }
 }
 
-/** Tách link sản phẩm từ Mô tả (trùng URL chỉ giữ 1). Task chưa có field link riêng nên lấy từ Mô tả. */
-export function extractSheetLinks(text: string | null | undefined): SheetLink[] {
-    if (!text) return [];
-    const seen = new Set<string>();
-    const out: SheetLink[] = [];
-    for (const raw of text.match(URL_RE) ?? []) {
-        const url = raw.replace(/[.,;:!?]+$/, '');
-        if (seen.has(url)) continue;
-        seen.add(url);
-        out.push({ url, label: linkLabel(url) });
+/** Chỉ cho href http/https (chặn javascript:/data:...); trả null nếu rỗng hoặc không hợp lệ -> không hiện link. */
+export function safeHttpUrl(url: string | null | undefined): string | null {
+    const v = url?.trim();
+    if (!v) return null;
+    try {
+        const u = new URL(v);
+        return u.protocol === 'http:' || u.protocol === 'https:' ? v : null;
+    } catch {
+        return null;
     }
-    return out;
 }
-
-/** Mô tả sau khi bỏ URL (phần chữ còn lại, hiện dưới tên việc). */
-export const stripUrls = (text: string | null | undefined): string => (text ?? '').replace(URL_RE, '').replace(/\s{2,}/g, ' ').trim();

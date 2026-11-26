@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { PeriodicTask } from '@/lib/api/periodic-tasks.api';
-import { extractSheetLinks, groupTasksByAssignee, linkLabel, sheetNameColor, stripUrls, SHEET_NAME_COLORS } from './taskSheet';
+import { groupTasksByAssignee, linkLabel, safeHttpUrl, sheetNameColor, SHEET_NAME_COLORS } from './taskSheet';
 
 const mk = (id: number, assigneeId: number, name: string) => ({ id, primaryAssigneeId: assigneeId, primaryAssignee: { id: assigneeId, name } }) as unknown as PeriodicTask;
 
@@ -13,18 +13,18 @@ describe('groupTasksByAssignee', () => {
     it('rỗng -> rỗng', () => expect(groupTasksByAssignee([])).toEqual([]));
 });
 
-describe('extractSheetLinks / linkLabel / stripUrls', () => {
-    it('tách URL, bỏ dấu câu cuối, khử trùng', () => {
-        const l = extractSheetLinks('xem https://drive.google.com/file/a.mp4, và https://drive.google.com/file/a.mp4 https://www.tiktok.com/@x.');
-        expect(l.map((x) => x.url)).toEqual(['https://drive.google.com/file/a.mp4', 'https://www.tiktok.com/@x']);
-    });
+describe('linkLabel / safeHttpUrl', () => {
     it('nhãn: tên file nếu có đuôi, ngược lại tên miền', () => {
         expect(linkLabel('https://x.com/d/TAP_13.mp4')).toBe('TAP_13.mp4');
         expect(linkLabel('https://www.tiktok.com/@abc')).toBe('tiktok.com');
     });
-    it('null/rỗng an toàn; stripUrls bỏ link giữ chữ', () => {
-        expect(extractSheetLinks(null)).toEqual([]);
-        expect(stripUrls('Final 8kb https://a.com/x')).toBe('Final 8kb');
+    it('chỉ nhận http/https, còn lại / rỗng -> null', () => {
+        expect(safeHttpUrl(' https://a.com/x ')).toBe('https://a.com/x');
+        expect(safeHttpUrl('javascript:alert(1)')).toBeNull();
+        expect(safeHttpUrl('data:text/html,hi')).toBeNull();
+        expect(safeHttpUrl('abc')).toBeNull();
+        expect(safeHttpUrl('')).toBeNull();
+        expect(safeHttpUrl(null)).toBeNull();
     });
 });
 

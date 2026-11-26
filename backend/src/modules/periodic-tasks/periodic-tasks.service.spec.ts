@@ -478,6 +478,19 @@ describe('PeriodicTasksService', () => {
       await expect(service.update(999, { title: 'X' }, { id: 1, role: Role.EMPLOYEE }, 'own')).rejects.toThrow(NotFoundException);
     });
 
+    it('productLink: gán, trim, và xoá bằng chuỗi rỗng/null; không gửi thì giữ nguyên', async () => {
+      const mk = (): any => ({ id: 1, title: 'T', note: null, productLink: 'https://a.com/x', periodStartDate: '2026-09-14', periodEndDate: '2026-09-14' });
+      mockTaskRepo.save.mockImplementation((t) => Promise.resolve(t));
+      const run = async (task: any, dto: any) => {
+        mockTaskRepo.createQueryBuilder.mockReturnValue(makeFakeQueryBuilder({ getOne: task }));
+        return service.update(1, dto, { id: 9, role: Role.ADMIN }, 'all');
+      };
+      expect((await run(mk(), { productLink: '  https://b.com/y  ' })).productLink).toBe('https://b.com/y');
+      expect((await run(mk(), { productLink: '' })).productLink).toBeNull();
+      expect((await run(mk(), { productLink: null })).productLink).toBeNull();
+      expect((await run(mk(), { title: 'Khác' })).productLink).toBe('https://a.com/x');
+    });
+
     it('sửa tiêu đề/note thành công, gán updatedById', async () => {
       const task: any = {
         id: 1,
@@ -826,6 +839,7 @@ describe('PeriodicTasksService', () => {
           isLocked: undefined,
           lockNote: undefined,
           note: undefined,
+          productLink: undefined,
         },
         null,
       );

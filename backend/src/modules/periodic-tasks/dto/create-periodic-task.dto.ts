@@ -8,8 +8,9 @@ import {
   IsDateString,
   MaxLength,
   Matches,
+  ValidateIf,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { PeriodType } from '../../../common/enums/period-type.enum';
 
 /**
@@ -69,6 +70,17 @@ export class CreatePeriodicTaskDto {
   @IsOptional()
   @IsString({ message: 'note phải là chuỗi' })
   note?: string;
+
+  @ApiPropertyOptional({
+    example: 'https://drive.google.com/file/d/abc/view',
+    description: 'Link sản phẩm (chỉ http/https, tối đa 1000 ký tự). Gửi chuỗi rỗng hoặc null để xoá link.',
+  })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @ValidateIf((o: CreatePeriodicTaskDto) => o.productLink !== undefined && o.productLink !== null && o.productLink !== '')
+  @IsString({ message: 'productLink phải là chuỗi' })
+  @MaxLength(1000, { message: 'Link sản phẩm tối đa 1000 ký tự' })
+  @Matches(/^https?:\/\/[^\s]+$/i, { message: 'Link sản phẩm phải bắt đầu bằng http:// hoặc https:// và không chứa khoảng trắng' })
+  productLink?: string | null;
 
   @ApiPropertyOptional({
     example: '#FF5733',

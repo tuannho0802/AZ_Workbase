@@ -707,6 +707,7 @@ function PeriodicTasksPageContent() {
             primaryAssigneeId: task.primaryAssigneeId,
             departmentId: task.departmentId ?? undefined,
             note: task.note ?? undefined,
+            productLink: task.productLink ?? undefined,
             color: task.color ?? '#1890ff',
         });
         // Rỗng tạm thời - `useEffect` phía trên tự nạp lại đúng giá trị NGAY
@@ -1692,6 +1693,18 @@ function PeriodicTasksPageContent() {
                     </Row>
                     <Form.Item name="note" label="Ghi chú" rules={[{ max: 1000, message: 'Ghi chú quá dài' }]}>
                         <Input.TextArea rows={2} placeholder="Không bắt buộc" />
+                    </Form.Item>
+                    {/* Link sản phẩm (không bắt buộc): chỉ http/https (khớp validate BE); để trống/xoá = không có link, cột "Link sản phẩm" ở Xem theo Ngày sẽ trống. */}
+                    <Form.Item
+                        name="productLink"
+                        label="Link sản phẩm"
+                        normalize={(v?: string) => v?.trim()}
+                        rules={[
+                            { max: 1000, message: 'Link tối đa 1000 ký tự' },
+                            { pattern: /^https?:\/\/\S+$/i, message: 'Link phải bắt đầu bằng http:// hoặc https:// và không chứa khoảng trắng' },
+                        ]}
+                    >
+                        <Input allowClear placeholder="https://… (nếu có)" />
                     </Form.Item>
 
                     {/* Gắn Khách hàng - hiện ở CẢ Tạo mới lẫn Sửa (yêu cầu chủ dự

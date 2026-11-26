@@ -8441,3 +8441,18 @@ Now [deploy]
 > - CHƯA làm: M8 (DROP `is_active`, `reach`, `engagement`, `likes`, `comments`, `shares`) - cần backup + xác nhận; `npm run guides:sync`.
 
 ---
+
+## [2026-11-26 16:00] | Công việc định kỳ - Link sản phẩm (cột "Link sản phẩm" của bảng Xem theo Ngày) | [Status: Success (BE tsc sạch; nest build OK; jest toàn BE 196 suite/3.096 test pass; FE tsc sạch; vitest periodic-tasks + guides 34 file/590 test pass; CHƯA chạy migration trên MySQL thật và `next build`)]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/migrations/1786397000000-AddProductLinkToPeriodicTasks.ts` (MỚI) — thêm `periodic_tasks.product_link VARCHAR(1000) NULL` (kiểm tra bằng `findColumnByName`, không dùng `IF NOT EXISTS`)
+- `backend/src/database/entities/periodic-task.entity.ts`, `modules/periodic-tasks/dto/create-periodic-task.dto.ts` (+ `dto/create-periodic-task.dto.spec.ts` MỚI), `periodic-tasks.service.ts` (+ spec) — field `productLink`: chỉ http/https, tối đa 1000 ký tự, rỗng/null = xoá, có trong audit snapshot
+- `frontend/src/lib/api/periodic-tasks.api.ts`, `app/(dashboard)/cong-viec-dinh-ky/page.tsx` (ô "Link sản phẩm" trong Modal Tạo/Sửa, không bắt buộc), `components/periodic-tasks/PeriodicTaskSheetTable.tsx` (cột Link chỉ hiện khi có link hợp lệ), `TaskAuditLogsModal.tsx` (nhãn), `lib/utils/taskSheet.ts`, `lib/guides/demo-kit/sample-tasks.ts`, `guides-content/cong-viec-dinh-ky.md`
+
+**Notes:**
+> - Cột Link của bảng sheet KHÔNG còn tách URL từ Mô tả (bản trước); Mô tả hiển thị nguyên văn, link trong Mô tả tự bấm được.
+> - Việc người dùng phải làm: chạy `npm run migration:run` TRƯỚC khi deploy BE; deploy BE rồi FE (FE cũ vẫn chạy vì field mới không bắt buộc); `npm run guides:sync`.
+> - Các view Bảng/Kanban/Lịch tháng CHƯA hiện Link sản phẩm.
+
+---
