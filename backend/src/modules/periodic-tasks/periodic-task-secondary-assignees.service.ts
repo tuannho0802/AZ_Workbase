@@ -107,6 +107,10 @@ export class PeriodicTaskSecondaryAssigneesService {
       throw new BadRequestException(`Nhân viên ID ${dto.userId} không tồn tại hoặc đã bị khóa`);
     }
 
+    // Scope `department` của periodic_tasks.edit: Phụ trách phụ cũng phải thuộc phòng ban mình quản lý.
+    const allowedDeptIds = await this.tasksService.getAssignableDepartmentIds(user.id, user.role, taskScope);
+    this.tasksService.assertDepartmentAssignable(targetUser.departmentId, allowedDeptIds, 'Người phụ trách phụ');
+
     const alreadySecondary = await this.secondaryRepo.findOne({
       where: { taskId, userId: dto.userId },
     });

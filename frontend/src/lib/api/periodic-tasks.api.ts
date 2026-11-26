@@ -268,6 +268,12 @@ export interface PeriodicTaskFilterParams {
 }
 
 export const periodicTasksApi = {
+  /** Id phòng ban người gọi đang quản lý - dùng lọc dropdown Người/Phòng ban khi scope = department. */
+  getManagedDepartmentIds: async (): Promise<number[]> => {
+    const response = await axiosInstance.get<{ departmentIds: number[] }>('/periodic-tasks/managed-departments');
+    return response.data.departmentIds ?? [];
+  },
+
   getAll: async (params: PeriodicTaskFilterParams): Promise<PaginatedResponse<PeriodicTask>> => {
     const response = await axiosInstance.get<PaginatedResponse<PeriodicTask>>('/periodic-tasks', { params });
     return response.data;

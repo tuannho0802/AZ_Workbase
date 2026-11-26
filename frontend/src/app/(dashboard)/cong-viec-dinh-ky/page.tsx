@@ -40,6 +40,7 @@ import { useAuthStore } from '@/lib/stores/auth.store';
 import { useMyPermissions } from '@/lib/hooks/useMyPermissions';
 import { useDebounce } from '@/lib/hooks/useDebounce';
 import { useDepartments } from '@/lib/hooks/useDepartments';
+import { usePeriodicTaskAssignScope } from '@/lib/hooks/usePeriodicTaskAssignScope';
 import { useUsersList } from '@/lib/hooks/useUsers';
 import { usePeriodicTaskStatuses } from '@/lib/hooks/usePeriodicTaskStatuses';
 import { useGuardedUpdatePeriodicTask } from '@/lib/hooks/useGuardedUpdatePeriodicTask';
@@ -461,6 +462,12 @@ function PeriodicTasksPageContent() {
     const { statuses } = usePeriodicTaskStatuses();
     const { departments } = useDepartments();
     const { users } = useUsersList();
+
+    // Dropdown theo SCOPE: filter bar theo `view`; modal Tạo theo `create`, modal Sửa theo `edit`
+    // (scope department => chỉ người/phòng ban thuộc phòng ban mình quản lý; BE vẫn chặn 403).
+    const { filterUsers, filterDepartments } = usePeriodicTaskAssignScope();
+    const filterUsersView = useMemo(() => filterUsers(users as any[], 'periodic_tasks.view'), [filterUsers, users]);
+    const filterDepartmentsView = useMemo(() => filterDepartments(departments, 'periodic_tasks.view'), [filterDepartments, departments]);
 
     // Phase 5: `lockedById` KHÔNG kèm object quan hệ từ BE (xem JSDoc
     // `PeriodicTask.lockedById` ở periodic-tasks.api.ts) - tự tra tên qua
@@ -1350,7 +1357,7 @@ function PeriodicTasksPageContent() {
                         optionLabelProp="label"
                         optionRender={renderUserOption}
                         popupMatchSelectWidth={false}
-                        options={users.map((u: any) => ({ value: u.id, label: u.name, user: u }))}
+                        options={filterUsersView.map((u: any) => ({ value: u.id, label: u.name, user: u }))}
                     />
                 </Col>
                 <Col xs={12} sm={6} md={4}>
@@ -1367,7 +1374,7 @@ function PeriodicTasksPageContent() {
                         optionLabelProp="label"
                         optionRender={renderUserOption}
                         popupMatchSelectWidth={false}
-                        options={users.map((u: any) => ({ value: u.id, label: u.name, user: u }))}
+                        options={filterUsersView.map((u: any) => ({ value: u.id, label: u.name, user: u }))}
                     />
                 </Col>
                 <Col xs={12} sm={6} md={4}>
@@ -1377,7 +1384,7 @@ function PeriodicTasksPageContent() {
                         style={{ width: '100%' }}
                         value={departmentId}
                         onChange={(v) => setDepartmentId(v)}
-                        options={departments.map((d) => ({
+                        options={filterDepartmentsView.map((d) => ({
                             value: d.id,
                             label: <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>{d.name}</Tag>,
                         }))}
@@ -1626,7 +1633,7 @@ function PeriodicTasksPageContent() {
                                     optionLabelProp="label"
                                     optionRender={renderUserOption}
                                     popupMatchSelectWidth={false}
-                                    options={users.map((u: any) => ({ value: u.id, label: u.name, user: u }))}
+                                    options={filterUsers(users as any[], editingTask ? 'periodic_tasks.edit' : 'periodic_tasks.create', [editingTask?.primaryAssigneeId]).map((u: any) => ({ value: u.id, label: u.name, user: u }))}
                                 />
                             </Form.Item>
                         </Col>
@@ -1639,7 +1646,7 @@ function PeriodicTasksPageContent() {
                                 <Select
                                     allowClear
                                     placeholder="Tự động theo người phụ trách"
-                                    options={departments.map((d) => ({
+                                    options={filterDepartments(departments, editingTask ? 'periodic_tasks.edit' : 'periodic_tasks.create').map((d) => ({
                                         value: d.id,
                                         label: (
                                             <Tag color={resolveEntityColor(d.color)} style={{ marginInlineEnd: 0 }}>
@@ -1836,7 +1843,7 @@ function PeriodicTasksPageContent() {
                                     onChange={setPendingSecondaryUserIds}
                                     optionLabelProp="label"
                                     optionRender={renderUserOption}
-                                    options={users
+                                    options={filterUsers(users as any[], editingTask ? 'periodic_tasks.edit' : 'periodic_tasks.create')
                                         .filter(
                                             (u: any) =>
                                                 u.id !== watchedPrimaryAssigneeId && !secondaryAssigneeIds.includes(u.id),

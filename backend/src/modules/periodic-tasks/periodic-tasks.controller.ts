@@ -58,8 +58,20 @@ export class PeriodicTasksController {
   @RequirePermission('periodic_tasks.create')
   @ApiOperation({ summary: 'Tạo Công việc định kỳ mới (thủ công, không có recurrence)' })
   @ApiResponse({ status: 201, description: 'Tạo thành công' })
-  create(@Body() dto: CreatePeriodicTaskDto, @GetUser('id') userId: number) {
-    return this.periodicTasksService.create(dto, userId);
+  create(
+    @Body() dto: CreatePeriodicTaskDto,
+    @GetUser() user: any,
+    @GetPermissionScope() scope: string | null | undefined,
+  ) {
+    return this.periodicTasksService.create(dto, user.id, { role: user.role, scope });
+  }
+
+  /** Phòng ban mà người gọi đang quản lý - FE dùng lọc dropdown Người/Phòng ban khi scope = department. */
+  @Get('managed-departments')
+  @RequirePermission('periodic_tasks.view')
+  @ApiOperation({ summary: 'Danh sách id phòng ban người gọi đang quản lý' })
+  async managedDepartments(@GetUser('id') userId: number) {
+    return { departmentIds: await this.periodicTasksService.getManagedDepartmentIds(userId) };
   }
 
   @Get()

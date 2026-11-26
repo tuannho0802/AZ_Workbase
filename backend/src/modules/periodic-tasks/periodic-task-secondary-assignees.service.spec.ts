@@ -38,6 +38,8 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
   const mockTasksService = {
     findForChecklist: jest.fn(),
     assertEditableWhenLocked: jest.fn(),
+    getAssignableDepartmentIds: jest.fn(),
+    assertDepartmentAssignable: jest.fn(),
     // Notification Phase 2: mock rỗng (no-op mặc định, giống hành vi thật khi
     // NOTIFICATIONS_ENABLED tắt) - test nghiệp vụ chính không quan tâm thông báo.
     notifyTaskSafely: jest.fn(),
@@ -55,6 +57,8 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
     jest.clearAllMocks();
     mockTasksService.findForChecklist.mockResolvedValue({ id: taskId, primaryAssigneeId });
     mockTasksService.assertEditableWhenLocked.mockResolvedValue(undefined);
+    mockTasksService.getAssignableDepartmentIds.mockResolvedValue(null); // mặc định: không giới hạn phòng ban
+    mockTasksService.assertDepartmentAssignable.mockReturnValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -87,6 +91,20 @@ describe('PeriodicTaskSecondaryAssigneesService', () => {
         service.addSecondaryAssignee(taskId, { userId: 99 }, employeeUser, 'own'),
       ).rejects.toThrow(BadRequestException);
       expect(mockSecondaryRepo.findOne).not.toHaveBeenCalled();
+    });
+
+    it('scope department: ném lỗi của assertDepartmentAssignable khi Phụ trách phụ ngoài phòng ban quản lý', async () => {
+      mockUserRepo.findOne.mockResolvedValue({ id: 5, isActive: true, departmentId: 9 });
+      mockTasksService.getAssignableDepartmentIds.mockResolvedValue([3]);
+      mockTasksService.assertDepartmentAssignable.mockImplementation(() => {
+        throw new BadRequestException('ngoài phạm vi');
+      });
+
+      await expect(
+        service.addSecondaryAssignee(taskId, { userId: 5 }, employeeUser, 'department'),
+      ).rejects.toThrow('ngoài phạm vi');
+      expect(mockTasksService.assertDepartmentAssignable).toHaveBeenCalledWith(9, [3], expect.any(String));
+      expect(mockSecondaryRepo.create).not.toHaveBeenCalled();
     });
 
     it('ném ConflictException nếu đã là Phụ trách phụ rồi (spec bắt buộc: "unique constraint - không thêm trùng")', async () => {

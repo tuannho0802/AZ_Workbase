@@ -143,6 +143,44 @@ describe('PeriodicTasksService', () => {
       await expect(service.create(validDto, 1)).rejects.toThrow(BadRequestException);
     });
 
+    describe('scope department (periodic_tasks.create)', () => {
+      beforeEach(() => {
+        mockDepartmentManagerRepo.find.mockResolvedValue([{ departmentId: 3 }]);
+        mockStatusRepo.findOne.mockResolvedValue({ id: 1, code: 'not_started', name: 'Chưa bắt đầu' });
+        mockDepartmentRepo.findOne.mockResolvedValue({ id: 3, name: 'Sales' });
+        mockTaskRepo.create.mockImplementation((data) => data);
+        mockTaskRepo.save.mockImplementation((data) => Promise.resolve({ id: 100, ...data }));
+      });
+
+      it('chặn 403 khi người phụ trách chính thuộc phòng ban KHÁC phòng ban mình quản lý', async () => {
+        mockUserRepo.findOne.mockResolvedValue({ id: 5, departmentId: 9, isActive: true });
+        await expect(
+          service.create(validDto, 1, { role: 'employee', scope: 'department' }),
+        ).rejects.toThrow(ForbiddenException);
+        expect(mockTaskRepo.save).not.toHaveBeenCalled();
+      });
+
+      it('chặn 403 khi chọn phòng ban của Task ngoài phạm vi dù người phụ trách hợp lệ', async () => {
+        mockUserRepo.findOne.mockResolvedValue({ id: 5, departmentId: 3, isActive: true });
+        await expect(
+          service.create({ ...validDto, departmentId: 9 }, 1, { role: 'employee', scope: 'department' }),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('cho phép khi cả người phụ trách và phòng ban đều thuộc phòng ban mình quản lý', async () => {
+        mockUserRepo.findOne.mockResolvedValue({ id: 5, departmentId: 3, isActive: true });
+        await service.create(validDto, 1, { role: 'employee', scope: 'department' });
+        expect(mockTaskRepo.save).toHaveBeenCalled();
+      });
+
+      it('Admin / scope all không bị giới hạn', async () => {
+        mockUserRepo.findOne.mockResolvedValue({ id: 5, departmentId: 9, isActive: true });
+        await service.create(validDto, 1, { role: 'admin', scope: 'department' });
+        await service.create(validDto, 1, { role: 'employee', scope: 'all' });
+        expect(mockTaskRepo.save).toHaveBeenCalledTimes(2);
+      });
+    });
+
     it('auto-fill departmentId từ phòng ban của primaryAssignee khi không truyền departmentId', async () => {
       mockUserRepo.findOne.mockResolvedValue({ id: 5, departmentId: 3, isActive: true });
       mockStatusRepo.findOne.mockResolvedValue({ id: 1, code: 'not_started', name: 'Chưa bắt đầu' });

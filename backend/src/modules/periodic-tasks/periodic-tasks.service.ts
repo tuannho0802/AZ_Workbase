@@ -19,6 +19,7 @@ import { DepartmentManager } from '../../database/entities/department-manager.en
 import { DepartmentManagerHelper } from '../departments/helpers/department-manager.helper';
 import { PermissionsService } from '../permissions/permissions.service';
 import { Role } from '../../common/enums/role.enum';
+import { PermissionScope } from '../../database/entities/role-permission.entity';
 import { CreatePeriodicTaskDto } from './dto/create-periodic-task.dto';
 import { UpdatePeriodicTaskDto } from './dto/update-periodic-task.dto';
 import { PeriodicTaskFiltersDto } from './dto/periodic-task-filters.dto';
@@ -297,7 +298,11 @@ export class PeriodicTasksService {
     }
   }
 
-  async create(dto: CreatePeriodicTaskDto, userId: number): Promise<PeriodicTask> {
+  async create(
+    dto: CreatePeriodicTaskDto,
+    userId: number,
+    options: { role?: string; scope?: string | null } = {},
+  ): Promise<PeriodicTask> {
     this.assertPeriodDatesValid(dto.periodStartDate, dto.periodEndDate);
 
     const primaryAssignee = await this.assertUserExists(dto.primaryAssigneeId, 'Người phụ trách chính');
@@ -310,6 +315,12 @@ export class PeriodicTasksService {
     // Auto-fill departmentId từ phòng ban của primaryAssignee lúc tạo nếu
     // không truyền - CHỈ là giá trị khởi tạo, sửa tự do sau đó (PLAN mục 2.10).
     const departmentId = dto.departmentId ?? primaryAssignee.departmentId ?? null;
+
+    // Scope `department` của periodic_tasks.create: người phụ trách chính VÀ phòng ban Task đều phải thuộc phòng ban mình quản lý.
+    const allowedDeptIds = await this.getAssignableDepartmentIds(userId, options.role ?? '', options.scope);
+    this.assertDepartmentAssignable(primaryAssignee.departmentId, allowedDeptIds, 'Người phụ trách chính');
+    this.assertDepartmentAssignable(departmentId, allowedDeptIds, 'Phòng ban của Công việc');
+
     const department =
       departmentId != null ? await this.departmentRepo.findOne({ where: { id: departmentId } }) : null;
 
@@ -832,8 +843,14 @@ export class PeriodicTasksService {
       );
     }
 
+    // Scope `department` của periodic_tasks.edit: CHỈ kiểm khi giá trị THẬT SỰ đổi (gửi lại giá trị cũ không bị chặn).
+    const allowedDeptIds = await this.getAssignableDepartmentIds(user.id, user.role, scope);
+
     if (dto.primaryAssigneeId !== undefined) {
       newPrimaryAssignee = await this.assertUserExists(dto.primaryAssigneeId, 'Người phụ trách chính');
+      if (dto.primaryAssigneeId !== task.primaryAssigneeId) {
+        this.assertDepartmentAssignable(newPrimaryAssignee.departmentId, allowedDeptIds, 'Người phụ trách chính');
+      }
       task.primaryAssigneeId = dto.primaryAssigneeId;
       // BUG THẬT (2026-09-15, xem WORKFLOW_LOG): `findOne()` gọi
       // `leftJoinAndSelect` nên `task.primaryAssignee` (relation) đã có
@@ -887,6 +904,9 @@ export class PeriodicTasksService {
     // Sửa tự do sau khi tạo, kể cả về null (PLAN mục 2.10) - CHỈ áp dụng khi
     // field THẬT SỰ có mặt trong body (không phải "undefined nghĩa là xoá").
     if (dto.departmentId !== undefined) {
+      if (dto.departmentId !== task.departmentId) {
+        this.assertDepartmentAssignable(dto.departmentId, allowedDeptIds, 'Phòng ban của Công việc');
+      }
       task.departmentId = dto.departmentId;
       task.department = dto.departmentId != null ? ({ id: dto.departmentId } as Department) : null;
       newDepartment =
@@ -1181,6 +1201,25 @@ export class PeriodicTasksService {
     });
 
     return { deleted: true };
+  }
+
+  /**
+   * Phạm vi GÁN người/phòng ban theo scope của permission đang gọi (create/edit):
+   * `null` = không giới hạn (Admin, scope `all`, hoặc `own`); mảng = CHỈ các phòng ban
+   * user đang quản lý (scope `department`). Chốt chặn thật ở BE - FE chỉ lọc dropdown cho tiện.
+   */
+  async getAssignableDepartmentIds(userId: number, userRole: string, scope?: string | null): Promise<number[] | null> {
+    if (userRole === Role.ADMIN || scope === PermissionScope.ALL) return null;
+    if (scope === PermissionScope.DEPARTMENT) return this.getManagedDepartmentIds(userId);
+    return null;
+  }
+
+  /** Ném 403 nếu `departmentId` nằm ngoài phạm vi gán (`allowed` null = không giới hạn). */
+  assertDepartmentAssignable(departmentId: number | null | undefined, allowed: number[] | null, label: string): void {
+    if (allowed === null) return;
+    if (departmentId == null || !allowed.includes(departmentId)) {
+      throw new ForbiddenException(`${label} phải thuộc phòng ban bạn quản lý`);
+    }
   }
 
   /** Dùng nội bộ Phase 2 (rollup) - lấy danh sách id phòng ban user đang quản lý. */

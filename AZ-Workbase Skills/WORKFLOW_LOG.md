@@ -8477,3 +8477,22 @@ Now [deploy]
 > - Toast 403 của hành động chủ động (POST/PUT/PATCH/DELETE) giữ nguyên.
 
 ---
+
+## [2026-11-26 18:30] | Công việc định kỳ: scope "Phòng ban quản lý" nay chặn thật việc gán người/phòng ban ngoài phạm vi (BE) + lọc dropdown (FE) | [Status: Success (BE tsc sạch, jest periodic-tasks 20 suite/301 test pass; FE vitest periodic-tasks 7 file/29 test pass; CHƯA chạy `next build`, chưa thử trên trình duyệt)]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/periodic-tasks/periodic-tasks.service.ts` — `getAssignableDepartmentIds()` + `assertDepartmentAssignable()`; `create(dto, userId, {role, scope})` và `update()` chặn 403 khi Phụ trách chính/phòng ban ngoài phòng ban mình quản lý (chỉ khi scope=department, Admin/all/own không đổi; `update` chỉ kiểm khi giá trị thật sự đổi)
+- `.../periodic-tasks.controller.ts` — `create` truyền scope; thêm `GET /periodic-tasks/managed-departments`
+- `.../periodic-task-secondary-assignees.service.ts` — thêm Phụ trách phụ cũng bị kiểm phạm vi
+- `.../periodic-tasks.service.spec.ts`, `.../periodic-task-secondary-assignees.service.spec.ts` — thêm test
+- `frontend/src/lib/hooks/usePeriodicTaskAssignScope.ts` (MỚI), `lib/api/periodic-tasks.api.ts`, `app/(dashboard)/cong-viec-dinh-ky/page.tsx` — dropdown Phụ trách chính/phụ/Phòng ban ở filter bar (theo scope `view`) và modal Tạo/Sửa (theo `create`/`edit`) chỉ hiện người/phòng ban thuộc phòng ban mình quản lý
+
+**Root Cause:**
+> `create()` không nhận scope (chỉ `view/edit/delete` được kiểm), và FE đổ dropdown từ `/users/all` + toàn bộ phòng ban nên Director (scope Phòng ban quản lý) vẫn thấy/gán được người phòng ban khác.
+
+**Notes:**
+> - Scope `own` của `create`/`edit` giữ nguyên (không giới hạn người được gán) — cần quyết định riêng nếu muốn siết.
+> - Trang `/hieu-suat-cong-viec` chưa đổi.
+
+---
