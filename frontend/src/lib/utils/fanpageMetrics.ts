@@ -1,14 +1,13 @@
+import dayjs from 'dayjs';
 import type { MetricKey } from '../api/fanpages.api';
 
 export const METRIC_LABELS: Record<MetricKey, string> = {
-    followers: 'Followers',
-    reach: 'Reach',
-    engagement: 'Tương tác',
-    views: 'Lượt xem',
+    followers: 'Follow kênh',
+    views: 'Lượt xem kênh',
 };
 
 /** Cột theo thứ tự trên lưới nhập (dùng cho dán từ Excel). */
-const COLS: MetricKey[] = ['followers', 'reach', 'engagement', 'views'];
+const COLS: MetricKey[] = ['followers', 'views'];
 
 export const fmtNum = (v: number | null | undefined): string => (v == null ? '—' : v.toLocaleString('vi-VN'));
 
@@ -78,4 +77,47 @@ export function applyPaste(matrix: PastedCell[][], rowIds: number[], rowIndex: n
         });
     });
     return { values, invalidCells, truncatedRows };
+}
+
+// ───────────── Kỳ số liệu (GĐ8) ─────────────
+
+export type PeriodMode = 'day' | 'week' | 'month' | 'range';
+export interface PeriodSel {
+    /** Ngày CUỐI kỳ (= `date` gửi BE). */
+    date: string;
+    /** Ngày ĐẦU kỳ; null = kỳ 1 ngày. */
+    periodStart: string | null;
+}
+
+const D = 'YYYY-MM-DD';
+export const PERIOD_MODE_LABELS: Record<PeriodMode, string> = { day: 'Ngày', week: 'Tuần', month: 'Tháng', range: 'Tuỳ chọn' };
+
+/**
+ * Chuẩn hoá kỳ người dùng chọn -> { date: ngày cuối, periodStart: ngày đầu | null }. Hàm thuần (nhận `today` từ ngoài).
+ * Tuần = Thứ Hai -> Chủ Nhật; Tháng = mùng 1 -> cuối tháng; kỳ chưa kết thúc thì kẹp ngày cuối = hôm nay (BE cấm ngày tương lai).
+ * Kỳ chỉ còn 1 ngày (ví dụ tuần này mới có thứ Hai) -> periodStart = null.
+ */
+export function buildPeriod(mode: PeriodMode, start: dayjs.Dayjs, end: dayjs.Dayjs | undefined, today: dayjs.Dayjs): PeriodSel {
+    let s = start;
+    let e = start;
+    if (mode === 'week') {
+        s = start.subtract((start.day() + 6) % 7, 'day'); // dayjs: CN = 0 -> lùi về Thứ Hai
+        e = s.add(6, 'day');
+    } else if (mode === 'month') {
+        s = start.startOf('month');
+        e = start.endOf('month');
+    } else if (mode === 'range') {
+        e = end ?? start;
+    }
+    if (e.isAfter(today, 'day')) e = today;
+    if (s.isAfter(e, 'day')) s = e;
+    return { date: e.format(D), periodStart: s.isSame(e, 'day') ? null : s.format(D) };
+}
+
+/** "09/11 – 15/11/2026" hoặc "15/11/2026" (kỳ 1 ngày). */
+export function formatPeriod(date: string, periodStart: string | null | undefined): string {
+    const e = dayjs(date);
+    if (!periodStart || periodStart === date) return e.format('DD/MM/YYYY');
+    const s = dayjs(periodStart);
+    return `${s.format(s.year() === e.year() ? 'DD/MM' : 'DD/MM/YYYY')} – ${e.format('DD/MM/YYYY')}`;
 }

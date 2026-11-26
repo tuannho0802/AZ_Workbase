@@ -840,6 +840,6 @@ Hệ quả: R2/R4/R5 và X9 áp dụng trên hàm quy kết **một chỗ** (`fa
 | Hạng mục | Trạng thái |
 |---|---|
 | Patch 1 — BE: bỏ Reach/Tương tác, kỳ số liệu, bài đăng chỉ View, export, M6 | ✅ (tsc sạch; jest `src/modules/fanpages` pass) |
-| Patch FE (16.5) | ⏳ |
-| Patch 2 — bỏ `is_active` (M7, code, FE) | ⏳ chờ xác nhận 16.6 |
+| Patch FE (16.5): bộ chọn Kỳ ở lưới + modal Số liệu, ô Follower sửa tại chỗ, bài/Top bài chỉ Lượt xem, bỏ công tắc/cột/bộ lọc Theo dõi | ✅ (FE `tsc` sạch với file liên quan; vitest fanpage pass) |
+| Patch 2 — bỏ `is_active` (M7, code BE) | ✅ (jest fanpages 33 suite/465 test; M7 `1786396000000` — **cần chạy trên MySQL thật**) |
 | M8 — DROP cột cũ | ⏳ sau cùng, cần backup + xác nhận |

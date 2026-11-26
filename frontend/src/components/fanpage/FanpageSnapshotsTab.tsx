@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { App, Button, Card, DatePicker, Empty, Form, Input, InputNumber, Modal, Popconfirm, Progress, Space, Table, Typography } from 'antd';
+import { App, Button, Card, DatePicker, Empty, Form, Input, InputNumber, Modal, Popconfirm, Progress, Radio, Space, Table, Typography } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -14,17 +14,17 @@ import {
     useSetFanpageTarget,
     useUpsertFanpageSnapshot,
 } from '@/lib/hooks/useFanpages';
-import { METRIC_LABELS, fmtNum, monthOfDate, targetProgress } from '@/lib/utils/fanpageMetrics';
+import { METRIC_LABELS, PERIOD_MODE_LABELS, buildPeriod, fmtNum, formatPeriod, monthOfDate, targetProgress, type PeriodMode } from '@/lib/utils/fanpageMetrics';
 import { toastApiError } from '@/lib/utils/error-message.util';
 
 const { Text } = Typography;
+const { RangePicker } = DatePicker;
 const FMT = 'YYYY-MM-DD';
 
 interface FormValues {
     date: dayjs.Dayjs;
+    range?: [dayjs.Dayjs, dayjs.Dayjs];
     followers?: number | null;
-    reach?: number | null;
-    engagement?: number | null;
     views?: number | null;
     note?: string;
 }
@@ -51,6 +51,8 @@ export function FanpageSnapshotsTab({ fanpageId, flags, archived }: Props) {
     const targetMut = useSetFanpageTarget(fanpageId);
     const [form] = Form.useForm<FormValues>();
     const [editing, setEditing] = useState<FanpageSnapshot | 'new' | null>(null);
+    // Kỳ chỉ chọn được khi THÊM mới; sửa dòng có sẵn giữ nguyên kỳ (BE: không gửi periodStart = giữ kỳ cũ).
+    const [periodMode, setPeriodMode] = useState<PeriodMode>('day');
     const canManage = !!flags.canManageMetrics && !archived;
 
     const month = monthOfDate(dayjs().format(FMT));
@@ -61,16 +63,26 @@ export function FanpageSnapshotsTab({ fanpageId, flags, archived }: Props) {
     const openNew = () => {
         form.resetFields();
         form.setFieldsValue({ date: dayjs() });
+        setPeriodMode('day');
         setEditing('new');
     };
     const openEdit = (s: FanpageSnapshot) => {
         form.resetFields();
-        form.setFieldsValue({ date: dayjs(s.snapshotDate), followers: s.followers, reach: s.reach, engagement: s.engagement, views: s.views, note: s.note ?? undefined });
+        form.setFieldsValue({ date: dayjs(s.snapshotDate), followers: s.followers, views: s.views, note: s.note ?? undefined });
         setEditing(s);
     };
 
     const submit = async (values: FormValues, confirmDrop = false) => {
-        const date = values.date.format(FMT);
+        const isNew = editing === 'new';
+        const period =
+            isNew && periodMode === 'range' && values.range
+                ? buildPeriod('range', values.range[0], values.range[1], dayjs())
+                : buildPeriod(isNew ? periodMode : 'day', values.date, undefined, dayjs());
+        const date = isNew ? period.date : values.date.format(FMT);
+        if (isNew && period.periodStart && values.views == null) {
+            message.error('Kỳ nhiều ngày bắt buộc nhập Lượt xem kênh (tổng cả kỳ)');
+            return;
+        }
         // Ngày đã có dòng -> sửa (kèm updatedAt đã đọc để chặn ghi đè người khác - X24); chưa có -> expected = null.
         const existing = snapshots.find((s) => s.snapshotDate === date) ?? null;
         const data: SnapshotPayload = { expectedUpdatedAt: existing?.updatedAt ?? null };
@@ -81,6 +93,7 @@ export function FanpageSnapshotsTab({ fanpageId, flags, archived }: Props) {
                 if (orig != null) data[k] = null; // xoá giá trị cũ
             } else if (v !== orig) data[k] = v; // chỉ gửi ô THỰC SỰ đổi (tránh kích hoạt lại cảnh báo giảm >50% khi chỉ sửa ghi chú)
         }
+        if (isNew && period.periodStart) data.periodStart = period.periodStart;
         const note = (values.note ?? '').trim();
         if (note !== (existing?.note ?? '')) data.note = note === '' ? null : note;
         if (confirmDrop) data.confirmDrop = true;
@@ -135,7 +148,7 @@ export function FanpageSnapshotsTab({ fanpageId, flags, archived }: Props) {
         .map((s) => ({ label: dayjs(s.snapshotDate).format('DD/MM'), followers: s.followers }));
 
     const columns: ColumnsType<FanpageSnapshot> = [
-        { title: 'Ngày', dataIndex: 'snapshotDate', width: 105, render: (d: string) => dayjs(d).format('DD/MM/YYYY') },
+        { title: 'Kỳ / Ngày', key: 'period', width: 150, render: (_: unknown, s) => formatPeriod(s.snapshotDate, s.periodStart) },
         ...METRIC_KEYS.map((k: MetricKey) => ({ title: METRIC_LABELS[k], dataIndex: k, align: 'right' as const, render: fmtNum })),
         { title: 'Ghi chú', dataIndex: 'note', ellipsis: true, render: (n: string | null) => n ?? '—' },
         { title: 'Người nhập', key: 'by', width: 130, render: (_: unknown, s) => (s.updatedBy ?? s.createdBy)?.name ?? '—' },
@@ -245,9 +258,36 @@ export function FanpageSnapshotsTab({ fanpageId, flags, archived }: Props) {
                 forceRender // giữ <Form> luôn được mount: openNew/openEdit gọi form.* TRƯỚC khi modal mở
             >
                 <Form form={form} layout="vertical" onFinish={(v) => submit(v)}>
-                    <Form.Item name="date" label="Ngày số liệu" rules={[{ required: true, message: 'Chọn ngày' }]}>
-                        <DatePicker format="DD/MM/YYYY" style={{ width: '100%' }} allowClear={false} disabled={editing !== 'new'} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
-                    </Form.Item>
+                    {editing === 'new' && (
+                        <Form.Item label="Kỳ số liệu">
+                            <Radio.Group
+                                optionType="button"
+                                value={periodMode}
+                                onChange={(e) => setPeriodMode(e.target.value as PeriodMode)}
+                                options={(Object.keys(PERIOD_MODE_LABELS) as PeriodMode[]).map((m) => ({ value: m, label: PERIOD_MODE_LABELS[m] }))}
+                            />
+                        </Form.Item>
+                    )}
+                    {editing === 'new' && periodMode === 'range' ? (
+                        <Form.Item name="range" label="Từ ngày – Đến ngày" rules={[{ required: true, message: 'Chọn khoảng ngày' }]}>
+                            <RangePicker format="DD/MM/YYYY" style={{ width: '100%' }} allowClear={false} disabledDate={(d) => d.isAfter(dayjs(), 'day')} />
+                        </Form.Item>
+                    ) : (
+                        <Form.Item
+                            name="date"
+                            label={editing === 'new' && periodMode !== 'day' ? (periodMode === 'week' ? 'Tuần (Thứ Hai – Chủ Nhật)' : 'Tháng') : 'Ngày số liệu'}
+                            rules={[{ required: true, message: 'Chọn ngày' }]}
+                        >
+                            <DatePicker
+                                picker={editing === 'new' && (periodMode === 'week' || periodMode === 'month') ? periodMode : 'date'}
+                                format={editing === 'new' && periodMode === 'month' ? 'MM/YYYY' : editing === 'new' && periodMode === 'week' ? undefined : 'DD/MM/YYYY'}
+                                style={{ width: '100%' }}
+                                allowClear={false}
+                                disabled={editing !== 'new'}
+                                disabledDate={(d) => d.isAfter(dayjs(), 'day')}
+                            />
+                        </Form.Item>
+                    )}
                     {METRIC_KEYS.map((k) => (
                         <Form.Item key={k} name={k} label={METRIC_LABELS[k]}>
                             <InputNumber style={{ width: '100%' }} min={0} precision={0} formatter={fmtInput} parser={parseInput} placeholder="Để trống = không nhập" />
@@ -256,7 +296,11 @@ export function FanpageSnapshotsTab({ fanpageId, flags, archived }: Props) {
                     <Form.Item name="note" label="Ghi chú" rules={[{ max: 255, message: 'Tối đa 255 ký tự' }]}>
                         <Input />
                     </Form.Item>
-                    <Text type="secondary">Cần nhập ít nhất 1 chỉ số.</Text>
+                    <Text type="secondary">
+                        {editing === 'new' && periodMode !== 'day'
+                            ? 'Kỳ nhiều ngày: Follow kênh là số tại ngày cuối kỳ, Lượt xem kênh là tổng cả kỳ (bắt buộc). Không được trùng kỳ Lượt xem đã nhập.'
+                            : 'Cần nhập ít nhất 1 chỉ số.'}
+                    </Text>
                 </Form>
             </Modal>
         </Space>

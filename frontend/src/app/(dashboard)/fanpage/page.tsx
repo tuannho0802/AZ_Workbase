@@ -24,6 +24,7 @@ import { PlatformTag } from '@/components/fanpage/PlatformTag';
 import { OwnerTag } from '@/components/fanpage/OwnerTag';
 import { HealthTag } from '@/components/fanpage/HealthTag';
 import { CadenceBadge } from '@/components/fanpage/CadenceBadge';
+import { FanpageFollowerCell } from '@/components/fanpage/FanpageFollowerCell';
 import { FanpageKpiCards, type KpiFilter } from '@/components/fanpage/FanpageKpiCards';
 import { FanpageTodayTab } from '@/components/fanpage/FanpageTodayTab';
 import { FanpageMetricsGridTab } from '@/components/fanpage/FanpageMetricsGridTab';
@@ -44,12 +45,6 @@ const { useBreakpoint } = Grid;
 type TabKey = 'today' | 'list' | 'metrics' | 'stats' | 'archived';
 const TAB_KEYS: TabKey[] = ['today', 'list', 'metrics', 'stats', 'archived'];
 const KPI_KEYS: KpiFilter[] = ['all', 'silent', 'at_risk', 'orphan'];
-
-/** Trạng thái "Theo dõi" - 1 nguồn cho cột bảng và dropdown lọc (cùng màu Tag). */
-const STATUS_TAG: Record<'true' | 'false', { color?: string; label: string }> = {
-    true: { color: 'green', label: 'Đang theo dõi' },
-    false: { label: 'Tạm ngừng' },
-};
 
 const MAX_OWNER_TAGS = 2;
 
@@ -93,8 +88,6 @@ function FanpagePageContent() {
     const ownerId = asInt(searchParams.get('owner'));
     const healthStatusId = asInt(searchParams.get('health'));
     const utmId = asInt(searchParams.get('utm'));
-    const statusParam = searchParams.get('status');
-    const status: 'true' | 'false' | undefined = statusParam === 'true' || statusParam === 'false' ? statusParam : undefined;
 
     // Đồng bộ bộ lọc/tab lên URL: mở lại đúng chỗ, gửi link cho đồng nghiệp, nút Back không mất bộ lọc.
     const setParams = useCallback(
@@ -120,13 +113,12 @@ function FanpagePageContent() {
             ...(ownerId != null ? { ownerId } : {}),
             ...(healthStatusId != null ? { healthStatusId } : {}),
             ...(utmId != null ? { utmId } : {}),
-            ...(status ? { isActive: status } : {}),
             ...(kpi === 'silent' || kpi === 'at_risk' ? { cadence: kpi } : {}),
             ...(kpi === 'orphan' ? { orphan: 'true' as const } : {}),
             // Mặc định BE ẩn Page đã lưu trữ; tab "Đã lưu trữ" chỉ xem Page đã lưu trữ.
             ...(tab === 'archived' ? { archived: 'true' as const } : {}),
         }),
-        [debouncedSearch, platformId, ownerId, healthStatusId, utmId, status, kpi, tab],
+        [debouncedSearch, platformId, ownerId, healthStatusId, utmId, kpi, tab],
     );
 
     const listEnabled = canView && (tab === 'list' || tab === 'archived');
@@ -313,16 +305,8 @@ function FanpagePageContent() {
         },
         { title: 'Người phụ trách', key: 'owner', width: 240, render: (_: unknown, p) => renderOwners(p) },
         { title: 'Tình trạng', key: 'health', width: 140, render: (_: unknown, p) => <HealthTag health={p.health} note={p.healthNote} /> },
+        { title: 'Follower', key: 'followers', width: 150, render: (_: unknown, p) => <FanpageFollowerCell fanpage={p} /> },
         { title: 'Nhịp đăng', key: 'cadence', width: 170, render: (_: unknown, p) => renderCadence(p) },
-        {
-            title: 'Theo dõi',
-            dataIndex: 'isActive',
-            width: 120,
-            render: (active: boolean) => {
-                const st = STATUS_TAG[active ? 'true' : 'false'];
-                return <Tag color={st.color}>{st.label}</Tag>;
-            },
-        },
         { title: 'Thao tác', key: 'actions', width: 120, fixed: 'right', render: (_: unknown, p) => renderActions(p) },
     ];
 
@@ -347,6 +331,7 @@ function FanpagePageContent() {
                             {p.cadence && <CadenceBadge cadence={p.cadence} detail />}
                             <HealthTag health={p.health} note={p.healthNote} />
                         </Space>
+                        <FanpageFollowerCell fanpage={p} />
                         {renderOwners(p)}
                         <div style={{ textAlign: 'right' }}>{renderActions(p)}</div>
                     </Space>
@@ -406,13 +391,6 @@ function FanpagePageContent() {
                     onChange: (v: number | undefined) => setParams({ utm: v }),
                     searchable: true,
                     options: utmOptions.map((u) => ({ value: u.id, label: <Tag color={u.color}>{u.name}</Tag>, searchText: u.name })),
-                },
-                {
-                    key: 'status',
-                    placeholder: 'Theo dõi',
-                    value: status,
-                    onChange: (v) => setParams({ status: v }),
-                    options: (['true', 'false'] as const).map((v) => ({ value: v, label: <Tag color={STATUS_TAG[v].color}>{STATUS_TAG[v].label}</Tag> })),
                 },
             ]}
         />

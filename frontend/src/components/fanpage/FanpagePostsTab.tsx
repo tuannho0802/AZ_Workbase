@@ -38,10 +38,7 @@ interface Props {
 }
 
 const POST_METRIC_COLS: Array<{ key: PostMetricKey; title: string }> = [
-    { key: 'views', title: 'Xem' },
-    { key: 'likes', title: 'Thích' },
-    { key: 'comments', title: 'Bình luận' },
-    { key: 'shares', title: 'Chia sẻ' },
+    { key: 'views', title: 'Lượt xem' },
 ];
 
 /** Ô số liệu bài sửa tại chỗ: có số -> hiện số; trống -> `＋` (nếu được sửa) hoặc `—`. Bấm mở ô nhập nhỏ. */

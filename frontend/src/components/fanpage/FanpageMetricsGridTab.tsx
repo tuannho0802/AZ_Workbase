@@ -1,17 +1,17 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, App, Button, DatePicker, Empty, Input, InputNumber, Radio, Space, Table, Typography } from 'antd';
+import { Alert, App, Button, DatePicker, Empty, Input, InputNumber, Radio, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { METRIC_KEYS, type BulkRowError, type BulkSnapshotRow, type FanpageGridRow, type MetricKey } from '@/lib/api/fanpages.api';
 import { useBulkSaveSnapshots, useFanpageGrid } from '@/lib/hooks/useFanpages';
-import { METRIC_LABELS, applyPaste, fmtNum, isSuspiciousDrop, parsePasted } from '@/lib/utils/fanpageMetrics';
+import { METRIC_LABELS, PERIOD_MODE_LABELS, applyPaste, buildPeriod, fmtNum, formatPeriod, isSuspiciousDrop, parsePasted, type PeriodMode } from '@/lib/utils/fanpageMetrics';
 import { toastApiError } from '@/lib/utils/error-message.util';
 import { PlatformTag } from './PlatformTag';
 
 const { Text } = Typography;
-const FMT = 'YYYY-MM-DD';
+const { RangePicker } = DatePicker;
 
 /** Bản nháp 1 dòng. `base` = `updatedAt` của dòng LÚC BẮT ĐẦU SỬA (null = lúc đó chưa có dòng) -> gửi làm `expectedUpdatedAt` (X24). */
 interface Draft {
@@ -32,7 +32,11 @@ const parseInput = (v: string | undefined): number => Number((v ?? '').replace(/
 
 export function FanpageMetricsGridTab({ enabled, onDirtyChange }: Props) {
     const { message, modal } = App.useApp();
-    const [date, setDate] = useState<string>(() => dayjs().format(FMT));
+    // Kỳ nhập: Ngày | Tuần | Tháng | Tuỳ chọn. `date` = ngày CUỐI kỳ (khoá dòng), `periodStart` = ngày đầu (null = 1 ngày).
+    const [periodMode, setPeriodMode] = useState<PeriodMode>('day');
+    const [pick, setPick] = useState<{ start: dayjs.Dayjs; end?: dayjs.Dayjs }>(() => ({ start: dayjs() }));
+    const { date, periodStart } = useMemo(() => buildPeriod(periodMode, pick.start, pick.end, dayjs()), [periodMode, pick]);
+    const multiDay = periodStart != null;
     const [mode, setMode] = useState<'missing' | 'all'>('missing');
     const [drafts, setDrafts] = useState<Record<number, Draft>>({});
     const [errors, setErrors] = useState<Record<number, BulkRowError>>({});
@@ -139,6 +143,12 @@ export function FanpageMetricsGridTab({ enabled, onDirtyChange }: Props) {
         const d = { ...drafts[id], ...override } as Draft;
         const row: BulkSnapshotRow = { fanpageId: id, expectedUpdatedAt: d.base };
         for (const k of METRIC_KEYS) if (k in d.values) row[k] = d.values[k] ?? null;
+        // Kỳ nhiều ngày chỉ áp cho dòng CÓ Lượt xem (BE bắt buộc); dòng chỉ có Follow lưu như mốc 1 ngày. Chế độ Ngày: không gửi -> giữ kỳ cũ của dòng.
+        if (periodMode !== 'day') {
+            const row0 = rowById.get(id);
+            const views = 'views' in d.values ? (d.values.views ?? null) : (row0?.current?.views ?? null);
+            row.periodStart = multiDay && views != null ? periodStart : null;
+        }
         if (d.note !== undefined) row.note = d.note.trim() === '' ? null : d.note;
         if (d.confirmDrop) row.confirmDrop = true;
         return row;
@@ -163,19 +173,22 @@ export function FanpageMetricsGridTab({ enabled, onDirtyChange }: Props) {
         }
     };
 
-    const changeDate = (next: string) => {
-        if (next === date) return;
-        if (dirtyCount === 0) return setDate(next);
+    const changePeriod = (nextMode: PeriodMode, nextPick: { start: dayjs.Dayjs; end?: dayjs.Dayjs }) => {
+        const next = buildPeriod(nextMode, nextPick.start, nextPick.end, dayjs());
+        if (nextMode === periodMode && next.date === date && next.periodStart === periodStart) return;
+        const apply = () => {
+            setDrafts({});
+            setErrors({});
+            setPeriodMode(nextMode);
+            setPick(nextPick);
+        };
+        if (dirtyCount === 0) return apply();
         modal.confirm({
-            title: 'Đổi ngày sẽ bỏ các thay đổi chưa lưu',
+            title: 'Đổi kỳ sẽ bỏ các thay đổi chưa lưu',
             content: `${dirtyCount} dòng đang sửa dở sẽ bị xoá.`,
-            okText: 'Đổi ngày',
+            okText: 'Đổi kỳ',
             cancelText: 'Ở lại',
-            onOk: () => {
-                setDrafts({});
-                setErrors({});
-                setDate(next);
-            },
+            onOk: apply,
         });
     };
 
@@ -208,7 +221,7 @@ export function FanpageMetricsGridTab({ enabled, onDirtyChange }: Props) {
                         Ghi đè
                     </Button>
                 )}
-                {(e.code === 'STALE' || e.code === 'INVALID') && (
+                {(e.code === 'STALE' || e.code === 'INVALID' || e.code === 'OVERLAP') && (
                     <Button size="small" onClick={() => discardRow(r.fanpageId)}>
                         Bỏ thay đổi
                     </Button>
@@ -218,7 +231,7 @@ export function FanpageMetricsGridTab({ enabled, onDirtyChange }: Props) {
     };
 
     const metricCol = (k: MetricKey, colIndex: number): ColumnsType<FanpageGridRow>[number] => ({
-        title: METRIC_LABELS[k],
+        title: k === 'views' && multiDay ? `${METRIC_LABELS[k]} (tổng cả kỳ)` : k === 'followers' && multiDay ? `${METRIC_LABELS[k]} (cuối kỳ)` : METRIC_LABELS[k],
         key: k,
         width: 150,
         render: (_: unknown, r, rowIndex) => {
@@ -261,6 +274,7 @@ export function FanpageMetricsGridTab({ enabled, onDirtyChange }: Props) {
                     <Space size={4} wrap>
                         <PlatformTag platform={{ ...r.platform, isActive: true }} />
                         <Text strong>{r.name}</Text>
+                        {r.current?.periodStart && <Tag color="blue">Kỳ {formatPeriod(date, r.current.periodStart)}</Tag>}
                     </Space>
                     {renderError(r)}
                 </div>
@@ -287,14 +301,32 @@ export function FanpageMetricsGridTab({ enabled, onDirtyChange }: Props) {
         <div ref={containerRef}>
             <Space wrap style={{ width: '100%', justifyContent: 'space-between', marginBottom: 12 }}>
                 <Space wrap>
-                    <Text>Ngày số liệu:</Text>
-                    <DatePicker
-                        format="DD/MM/YYYY"
-                        allowClear={false}
-                        value={dayjs(date)}
-                        disabledDate={(d) => d.isAfter(dayjs(), 'day')}
-                        onChange={(d) => d && changeDate(d.format(FMT))}
+                    <Text>Kỳ số liệu:</Text>
+                    <Radio.Group
+                        optionType="button"
+                        value={periodMode}
+                        onChange={(e) => changePeriod(e.target.value as PeriodMode, { start: pick.start, end: pick.end })}
+                        options={(Object.keys(PERIOD_MODE_LABELS) as PeriodMode[]).map((m) => ({ value: m, label: PERIOD_MODE_LABELS[m] }))}
                     />
+                    {periodMode === 'range' ? (
+                        <RangePicker
+                            format="DD/MM/YYYY"
+                            allowClear={false}
+                            value={[pick.start, pick.end ?? pick.start]}
+                            disabledDate={(d) => d.isAfter(dayjs(), 'day')}
+                            onChange={(v) => v?.[0] && v?.[1] && changePeriod('range', { start: v[0], end: v[1] })}
+                        />
+                    ) : (
+                        <DatePicker
+                            picker={periodMode === 'day' ? 'date' : periodMode}
+                            format={periodMode === 'day' ? 'DD/MM/YYYY' : periodMode === 'month' ? 'MM/YYYY' : undefined}
+                            allowClear={false}
+                            value={periodMode === 'day' ? dayjs(date) : pick.start}
+                            disabledDate={(d) => d.isAfter(dayjs(), 'day')}
+                            onChange={(d) => d && changePeriod(periodMode, { start: d })}
+                        />
+                    )}
+                    {multiDay && <Tag color="blue">{formatPeriod(date, periodStart)}</Tag>}
                     <Radio.Group
                         value={mode}
                         onChange={(e) => setMode(e.target.value)}
@@ -324,7 +356,11 @@ export function FanpageMetricsGridTab({ enabled, onDirtyChange }: Props) {
                 type="info"
                 showIcon
                 style={{ marginBottom: 12 }}
-                title="Số liệu do nhân viên nhập tay. Số trong ngoặc là lần nhập trước. Có thể dán nhiều dòng/cột từ Excel vào ô đầu tiên (Tab/Enter để di chuyển)."
+                title={
+                    multiDay
+                        ? 'Kỳ nhiều ngày: Follow kênh là số tại ngày cuối kỳ, Lượt xem kênh là TỔNG cả kỳ (bắt buộc nhập). Hai kỳ Lượt xem không được trùng nhau. Số trong ngoặc là lần nhập trước.'
+                        : 'Số liệu do nhân viên nhập tay (Follow kênh, Lượt xem kênh). Số trong ngoặc là lần nhập trước. Có thể dán nhiều dòng/cột từ Excel vào ô đầu tiên (Tab/Enter để di chuyển).'
+                }
             />
             <Table<FanpageGridRow>
                 rowKey="fanpageId"

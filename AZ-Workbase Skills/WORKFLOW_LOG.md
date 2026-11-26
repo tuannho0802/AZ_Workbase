@@ -8424,3 +8424,20 @@ Now [deploy]
 > - CHƯA làm: Patch FE, Patch 2 (bỏ `is_active`, chờ xác nhận), M8 (DROP cột cũ, cần backup + xác nhận).
 
 ---
+
+## [2026-11-26 14:00] | GĐ8 Fanpage - Patch FE + Patch 2 (bỏ `is_active`) | [Status: Success (FE tsc sạch trừ lỗi cũ không liên quan; vitest fanpage 44 test pass; BE jest fanpages 33 suite/465 test pass; CHƯA chạy migration M7 và `next build`)]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/migrations/1786396000000-SeedFanpagePausedStatusBackfill.ts` (MỚI) — seed Tình trạng "Tạm ngừng" (chặn) + backfill Page `is_active = 0`; sửa `1786395000000` dùng `hasColumn` (MySQL không có `ADD COLUMN IF NOT EXISTS`)
+- `backend/src/modules/fanpages/*`, `database/entities/fanpage.entity.ts` — bỏ `isActive` của Page (entity/DTO/bộ lọc/`isTrackedPage`/cron), spec cập nhật + `dto/fanpage.dto.spec.ts` (MỚI)
+- `frontend/src/lib/api/fanpages.api.ts`, `lib/utils/fanpageMetrics.ts(+test)` — bỏ Reach/Tương tác/Thích/Bình luận/Chia sẻ; thêm `periodStart`, `buildPeriod`, `formatPeriod`
+- `frontend/src/components/fanpage/`: `FanpageMetricsGridTab` + `FanpageSnapshotsTab` (chọn Kỳ Ngày/Tuần/Tháng/Tuỳ chọn, lỗi OVERLAP), `FanpageFollowerCell` (MỚI, sửa Follower tại chỗ), `FanpagePostsTab`, `FanpageStatsTab` (chỉ Lượt xem), `FanpageFormModal`/`FanpageDetailDrawer`/`FanpageHistoryTab` (bỏ Theo dõi), `app/(dashboard)/fanpage/page.tsx` (bỏ cột + bộ lọc Theo dõi, thêm cột Follower)
+- `PERMISSIONS.md` §2.20 + changelog, `PLAN_FANPAGE_ANALYTICS.md` 16.8, `guides-content/fanpage.md`
+
+**Notes:**
+> - Deploy BE + FE cùng đợt (`forbidNonWhitelisted`: FE cũ gửi `isActive`/`reach`... sẽ 400). Chạy migration M6 rồi M7 trước deploy.
+> - M7: Page tạm ngừng có tình trạng không chặn (vd "Bị hạn chế") bị đổi sang "Tạm ngừng".
+> - CHƯA làm: M8 (DROP `is_active`, `reach`, `engagement`, `likes`, `comments`, `shares`) - cần backup + xác nhận; `npm run guides:sync`.
+
+---

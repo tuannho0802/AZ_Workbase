@@ -125,11 +125,6 @@ export function FanpageDetailDrawer({ fanpageId, onClose, onEdit }: Props) {
                                             ),
                                         },
                                         {
-                                            key: 'status',
-                                            label: 'Theo dõi',
-                                            children: fanpage.isActive ? <Tag color="green">Đang theo dõi</Tag> : <Tag>Tạm ngừng</Tag>,
-                                        },
-                                        {
                                             key: 'health',
                                             label: 'Tình trạng Page',
                                             children: <HealthTag health={fanpage.health} note={fanpage.healthNote} />,

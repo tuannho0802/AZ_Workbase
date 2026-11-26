@@ -79,10 +79,7 @@ export function FanpageStatsTab({ enabled, onOpenDetail }: Props) {
             ),
         },
         { title: 'Ngày đăng', dataIndex: 'postedDate', width: 105, render: (d: string | null) => (d ? dayjs(d).format('DD/MM/YYYY') : '—') },
-        { title: 'Thích', dataIndex: 'likes', align: 'right', width: 80, render: fmtNum },
-        { title: 'Bình luận', dataIndex: 'comments', align: 'right', width: 90, render: fmtNum },
-        { title: 'Chia sẻ', dataIndex: 'shares', align: 'right', width: 80, render: fmtNum },
-        { title: 'Tương tác', dataIndex: 'interactions', align: 'right', width: 100, render: (n: number) => <Text strong>{fmtNum(n)}</Text> },
+        { title: 'Lượt xem', dataIndex: 'views', align: 'right', width: 110, render: (n: number | null) => <Text strong>{fmtNum(n)}</Text> },
     ];
 
     const gainText = g ? (g.gain.pagesWithGain > 0 ? `${g.gain.total > 0 ? '+' : g.gain.total < 0 ? '−' : ''}${Math.abs(g.gain.total).toLocaleString('vi-VN')}` : '—') : '—';
@@ -198,7 +195,7 @@ export function FanpageStatsTab({ enabled, onOpenDetail }: Props) {
                 )}
             </Card>
 
-            <Card size="small" title="Top bài (thích + bình luận + chia sẻ)">
+            <Card size="small" title="Top bài (theo lượt xem)">
                 {topQ.isLoading || !topQ.data ? (
                     <Skeleton active />
                 ) : (

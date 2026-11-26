@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import { App, Form, Input, InputNumber, Modal, Select, Switch, Tag } from 'antd';
+import { App, Form, Input, InputNumber, Modal, Select, Tag } from 'antd';
 import {
   useCreateFanpage,
   useFanpageHealthStatuses,
@@ -22,7 +22,6 @@ interface FormValues {
   url: string;
   /** Phần tử đầu = người phụ trách chính. */
   ownerIds?: number[];
-  isActive?: boolean;
   healthStatusId?: number;
   healthNote?: string;
   targetPostsPerWeek?: number | null;
@@ -70,7 +69,6 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
         name: fanpage.name,
         url: fanpage.url,
         ownerIds: sortOwnersPrimaryFirst(fanpage.owners, fanpage.ownerId).map((o) => o.id),
-        isActive: fanpage.isActive,
         healthStatusId: fanpage.healthStatusId ?? fanpage.health?.id,
         healthNote: fanpage.healthNote ?? undefined,
         targetPostsPerWeek: fanpage.targetPostsPerWeek ?? null,
@@ -105,7 +103,6 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
             name: values.name.trim(),
             url: values.url.trim(),
             ...(canAssignOwner && values.ownerIds?.length ? { ownerIds: values.ownerIds } : {}),
-            isActive: values.isActive,
             ...(values.healthStatusId != null ? { healthStatusId: values.healthStatusId } : {}),
             // Ghi chú trống = xoá ghi chú (null); mục tiêu trống = bỏ mục tiêu.
             healthNote: values.healthNote?.trim() ? values.healthNote.trim() : null,
@@ -236,11 +233,6 @@ export function FanpageFormModal({ open, fanpage, canAssignOwner, onClose }: Pro
                 );
               }}
             />
-          </Form.Item>
-        )}
-        {isEdit && (
-          <Form.Item name="isActive" label="Đang theo dõi" valuePropName="checked" extra="Tắt = tạm ngừng: Page mờ đi, không tính KPI và không nhắc đăng bài (vẫn giữ lịch sử bài đăng/ghi chú).">
-            <Switch />
           </Form.Item>
         )}
       </Form>

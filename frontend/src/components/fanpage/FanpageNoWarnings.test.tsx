@@ -23,7 +23,7 @@ vi.mock('@/lib/hooks/useFanpages', () => {
         useUpdateFanpagePost: mut,
         useDeleteFanpagePost: mut,
         useFanpageSnapshots: () => ({
-            snapshots: [{ id: 1, snapshotDate: '2026-11-01', followers: 10, reach: 1, engagement: 1, views: 1, note: null, updatedAt: 'x' }],
+            snapshots: [{ id: 1, snapshotDate: '2026-11-01', followers: 10, periodStart: null, views: 1, note: null, updatedAt: 'x' }],
             isLoading: false,
         }),
         useFanpageTargets: () => ({ targets: [] }),

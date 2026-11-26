@@ -63,9 +63,9 @@ export interface FanpageFlags {
     canExport?: boolean;
 }
 
-export const METRIC_KEYS = ['followers', 'reach', 'engagement', 'views'] as const;
+export const METRIC_KEYS = ['followers', 'views'] as const;
 export type MetricKey = (typeof METRIC_KEYS)[number];
-export type PostMetricKey = 'views' | 'likes' | 'comments' | 'shares';
+export type PostMetricKey = 'views';
 
 /** Follower nhập tay mới nhất + chênh lệch so với lần nhập trước (kèm số ngày cách nhau). */
 export interface LatestMetric {
@@ -86,7 +86,6 @@ export interface Fanpage {
     owner: FanpageUserBrief | null;
     /** TẤT CẢ người phụ trách (gồm cả người chính). */
     owners: FanpageUserBrief[];
-    isActive: boolean;
     createdBy?: { id: number; name: string } | null;
     createdAt: string;
     updatedAt: string;
@@ -179,7 +178,6 @@ export interface FanpageListResponse {
 export interface FanpageFilters {
     platformId?: number;
     ownerId?: number;
-    isActive?: 'true' | 'false';
     search?: string;
     healthStatusId?: number;
     /** Chỉ Page đang gắn UTM này (GĐ5). */
@@ -223,9 +221,6 @@ export interface FanpagePost {
     postedDate: string | null;
     note: string | null;
     views: number | null;
-    likes: number | null;
-    comments: number | null;
-    shares: number | null;
     createdBy: FanpageUserRef | null;
     updatedBy: FanpageUserRef | null;
     createdAt: string;
@@ -306,7 +301,7 @@ export interface CreateFanpagePayload {
     targetPostsPerWeek?: number | null;
 }
 
-export type UpdateFanpagePayload = Partial<CreateFanpagePayload> & { isActive?: boolean };
+export type UpdateFanpagePayload = Partial<CreateFanpagePayload>;
 
 export type BulkSkipReason = 'invalid_url' | 'too_long' | 'duplicate_in_batch' | 'duplicate_existing';
 
@@ -354,9 +349,6 @@ export interface FanpagePostPayload {
     postedDate?: string | null;
     note?: string | null;
     views?: number | null;
-    likes?: number | null;
-    comments?: number | null;
-    shares?: number | null;
 }
 
 // ── Số liệu định kỳ / thống kê (GĐ4) ──
@@ -365,9 +357,9 @@ export interface FanpageSnapshot {
     fanpageId: number;
     /** YYYY-MM-DD */
     snapshotDate: string;
+    /** Ngày ĐẦU kỳ của `views`; null = kỳ 1 ngày (= snapshotDate = ngày cuối kỳ). */
+    periodStart: string | null;
     followers: number | null;
-    reach: number | null;
-    engagement: number | null;
     views: number | null;
     note: string | null;
     createdBy: FanpageUserRef | null;
@@ -380,9 +372,9 @@ export interface FanpageSnapshot {
 /** `undefined` = giữ nguyên, `null` = xoá giá trị đó. */
 export interface SnapshotPayload {
     followers?: number | null;
-    reach?: number | null;
-    engagement?: number | null;
     views?: number | null;
+    /** Ngày đầu kỳ. Bỏ qua = giữ kỳ cũ; null = về kỳ 1 ngày; ngày = kỳ nhiều ngày (bắt buộc có `views`). */
+    periodStart?: string | null;
     note?: string | null;
     expectedUpdatedAt?: string | null;
     confirmDrop?: boolean;
@@ -394,7 +386,7 @@ export interface BulkSnapshotRow extends SnapshotPayload {
 
 export interface BulkRowError {
     fanpageId: number;
-    code: 'NO_ACCESS' | 'INVALID' | 'STALE' | 'SUSPICIOUS_DROP';
+    code: 'NO_ACCESS' | 'INVALID' | 'STALE' | 'SUSPICIOUS_DROP' | 'OVERLAP';
     message: string;
     currentUpdatedAt?: string | null;
 }
@@ -410,8 +402,8 @@ export interface FanpageGridRow {
     name: string;
     url: string;
     platform: { id: number; name: string; color: string };
-    current: (Pick<FanpageSnapshot, 'followers' | 'reach' | 'engagement' | 'views' | 'note'> & { updatedAt: string }) | null;
-    previous: (Pick<FanpageSnapshot, 'followers' | 'reach' | 'engagement' | 'views'> & { date: string }) | null;
+    current: (Pick<FanpageSnapshot, 'followers' | 'views' | 'periodStart' | 'note'> & { updatedAt: string }) | null;
+    previous: (Pick<FanpageSnapshot, 'followers' | 'views'> & { date: string }) | null;
 }
 
 export interface FanpageGridResponse {
@@ -554,10 +546,6 @@ export interface TopPostRow {
     url: string;
     postedDate: string | null;
     views: number | null;
-    likes: number | null;
-    comments: number | null;
-    shares: number | null;
-    interactions: number;
 }
 
 export interface TopPostsResponse {

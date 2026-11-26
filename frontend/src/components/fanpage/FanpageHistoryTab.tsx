@@ -38,6 +38,7 @@ export function describeHistoryEvent(e: Pick<FanpageHistoryEvent, 'type' | 'befo
         case 'health':
             return `Đổi tình trạng: ${healthText(e.before)} → ${healthText(e.after)}`;
         case 'tracking':
+            // Chỉ còn ở audit CŨ (trước khi bỏ công tắc Theo dõi); thay đổi mới hiện qua sự kiện "Đổi tình trạng".
             return (e.after as { isActive?: boolean } | null)?.isActive ? 'Bật theo dõi' : 'Tắt theo dõi (tạm ngừng)';
         case 'archive':
             return (e.after as { archived?: boolean } | null)?.archived ? 'Lưu trữ Page' : 'Bỏ lưu trữ Page';
@@ -46,7 +47,7 @@ export function describeHistoryEvent(e: Pick<FanpageHistoryEvent, 'type' | 'befo
     }
 }
 
-/** Timeline đổi người phụ trách / tình trạng / theo dõi / lưu trữ (E2). */
+/** Timeline đổi người phụ trách / tình trạng / lưu trữ (E2; sự kiện theo dõi cũ vẫn hiện). */
 export function FanpageHistoryTab({ fanpageId }: { fanpageId: number }) {
     const { events, isLoading } = useFanpageHistory(fanpageId);
     if (isLoading) return <Spin />;

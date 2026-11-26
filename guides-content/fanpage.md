@@ -51,14 +51,14 @@ Người chỉ có phạm vi **Của tôi** mở trang là vào thẳng tab **H�
 
 1. Bấm **Thêm Page**, chọn **Nền tảng**, nhập **Tên Page** và **Link Page** (bắt đầu bằng `http://` hoặc `https://`), có thể đặt **mục tiêu số bài mỗi tuần**, rồi bấm **Thêm**.
 2. Mỗi ngày mở tab **Hôm nay**: Page nào cần đăng sẽ nằm trong mục **Cần đăng bài**. Bấm **Thêm bài**, dán URL bài vừa đăng (ngày mặc định là hôm nay) rồi lưu — Page tự chuyển xuống mục đã đăng.
-3. Mỗi tuần mở tab **Nhập số liệu**, nhập follower (và reach, tương tác, lượt xem nếu có) cho các Page, bấm **Lưu**.
+3. Mỗi tuần mở tab **Nhập số liệu**, nhập **Follow kênh** và **Lượt xem kênh** cho các Page, bấm **Lưu**.
 4. Mở tab **Thống kê** để xem biểu đồ tăng trưởng, số bài theo tuần và top bài.
 
 ## Các tab trên trang
 
 ### Hôm nay
 
-Danh sách việc cần làm của bạn: các Page đang theo dõi mà **chưa đăng hôm nay**.
+Danh sách việc cần làm của bạn: các Page còn hoạt động (không lưu trữ, không ở tình trạng chặn như *Tạm ngừng*) mà **chưa đăng hôm nay**.
 
 - **Cần đăng bài**: Page im lặng hoặc có nguy cơ trễ mục tiêu tuần, kèm số ngày còn lại trong tuần (tính cả hôm nay).
 - **Đã đăng hôm nay** và **Đang ổn**: thu gọn bên dưới.
@@ -72,7 +72,7 @@ Phía trên là các **thẻ thống kê** — bấm vào thẻ để lọc bả
 
 | Thẻ | Nghĩa |
 |---|---|
-| Tổng Page | Số Page (kèm số đang theo dõi) |
+| Tổng Page | Số Page (kèm số còn hoạt động) |
 | Im lặng | Lâu chưa có bài mới |
 | Nguy cơ trễ tuần | Phải đăng mỗi ngày còn lại mới kịp mục tiêu tuần |
 | Đã đăng hôm nay | Số Page đã có bài hôm nay |
@@ -80,7 +80,7 @@ Phía trên là các **thẻ thống kê** — bấm vào thẻ để lọc bả
 | Follower 30 ngày | Tăng giảm follower trong 30 ngày |
 | Chưa có người phụ trách | Người phụ trách đã nghỉ hoặc bị khoá |
 
-**Bộ lọc**: ô tìm theo tên hoặc link Page, **Nền tảng**, **Người phụ trách** (chỉ hiện khi bạn xem được Page của người khác), **Tình trạng Page**, **UTM**, **Theo dõi**.
+**Bộ lọc**: ô tìm theo tên hoặc link Page, **Nền tảng**, **Người phụ trách** (chỉ hiện khi bạn xem được Page của người khác), **Tình trạng Page**, **UTM**.
 
 **Cột trong bảng**:
 
@@ -94,7 +94,7 @@ Menu **⋯** ở mỗi dòng có **Lưu trữ** (và **Xoá vĩnh viễn** ở t
 
 | Trạng thái | Khi nào |
 |---|---|
-| ⏸ Tạm ngừng | Page không còn được theo dõi |
+| ⏸ Tạm ngừng | Page đang ở tình trạng chặn (như *Tạm ngừng*, *Bị khoá*, *Đã bỏ*) hoặc đã lưu trữ |
 | ✦ Mới | Page mới tạo, chưa quá hạn chờ bài đầu tiên |
 | ⚠ Im lặng | Chưa đăng bài quá số ngày quy định (mặc định **3 ngày**) |
 | ◔ Nguy cơ trễ | Còn thiếu bài so với mục tiêu tuần và số bài thiếu ≥ số ngày còn lại |
@@ -102,7 +102,12 @@ Menu **⋯** ở mỗi dòng có **Lưu trữ** (và **Xoá vĩnh viễn** ở t
 
 ### Nhập số liệu
 
-Lưới nhập nhanh theo ngày: mỗi dòng là một Page, các cột Follower, Reach, Tương tác, Lượt xem và Ghi chú.
+Lưới nhập nhanh: mỗi dòng là một Page, gồm **Follow kênh**, **Lượt xem kênh** và Ghi chú. Chọn **Kỳ** là **Ngày**, **Tuần** (Thứ Hai–Chủ Nhật), **Tháng** hoặc **Tuỳ chọn** (Từ–Đến):
+
+- **Follow kênh** là số tại **ngày cuối kỳ**; **Lượt xem kênh** là **tổng cả kỳ**.
+- Kỳ nhiều ngày **bắt buộc nhập Lượt xem**, dài tối đa 366 ngày. Kỳ chưa kết thúc sẽ tính đến hôm nay.
+- Hai kỳ Lượt xem của cùng một Page **không được trùng nhau** (để không cộng đôi); dòng trùng sẽ báo lỗi và nêu kỳ bị trùng.
+- Muốn cập nhật nhanh follower hôm nay: ở danh sách Page, bấm biểu tượng bút ngay trên cột **Follower**.
 
 - Số **trong ngoặc mờ** là lần nhập trước để bạn so sánh.
 - Có thể **dán nhiều dòng/cột từ Excel** vào ô đầu tiên; dùng Tab/Enter để di chuyển ô.
@@ -110,7 +115,7 @@ Lưới nhập nhanh theo ngày: mỗi dòng là một Page, các cột Follower
 - Dòng lỗi được tô viền đỏ và nêu lý do; **dòng hợp lệ vẫn được lưu**.
 - Số **giảm hơn 50%** so với lần trước bị coi là có thể gõ nhầm: hệ thống hỏi lại, bạn xác nhận mới lưu.
 - Nếu người khác vừa sửa cùng ô trước bạn, hệ thống báo để bạn tải lại thay vì ghi đè âm thầm.
-- Đổi ngày hoặc rời tab khi chưa lưu sẽ có hộp xác nhận bỏ thay đổi.
+- Đổi kỳ hoặc rời tab khi chưa lưu sẽ có hộp xác nhận bỏ thay đổi.
 
 Số liệu do nhân viên **nhập tay**, không tự lấy từ Facebook/TikTok.
 
@@ -120,7 +125,7 @@ Chọn kỳ **30 ngày**, **90 ngày** hoặc **12 tháng** ở đầu tab. Mỗ
 
 - **Tăng trưởng follower**: tổng và so sánh giữa các Page. Page không có số liệu đúng ngày dùng **giá trị gần nhất trước đó**; Page chưa từng nhập số liệu được ghi chú riêng và không làm sai tổng.
 - **Số bài theo tuần**: số bài mỗi tuần so với mục tiêu.
-- **Top bài**: các bài có nhiều thích + bình luận + chia sẻ nhất (chỉ tính bài đã nhập số liệu).
+- **Top bài**: các bài có nhiều **lượt xem** nhất (chỉ tính bài đã nhập lượt xem).
 - **Page → Khách & Tiền nạp**: xem mục bên dưới.
 - **Xếp hạng đóng góp**: chỉ hiện khi bạn có quyền xem xếp hạng.
 
@@ -151,13 +156,13 @@ Page đã đóng hẳn: ẩn khỏi danh sách chính, bị loại khỏi thốn
 Bấm tên Page để mở. Các tab:
 
 - **Tổng quan**: nhịp tuần, chuỗi ngày đăng liên tiếp, follower, biểu đồ nhiệt 12 tuần và mục tiêu đăng mỗi tuần (sửa tại chỗ).
-- **Thông tin**: nền tảng, link, người phụ trách, theo dõi, tình trạng.
+- **Thông tin**: nền tảng, link, người phụ trách, tình trạng.
 - **Bài đăng**: thêm, sửa, xoá bài; xem mục *Dán nhiều link*.
 - **Số liệu**: biểu đồ follower của Page và bảng số liệu, có nút thêm số liệu.
 - **UTM**: gắn hoặc gỡ UTM cho Page, đổi Page chính.
 - **Data khách hàng**: chỉ hiện khi bạn có quyền xem Khách hàng.
 - **Ghi chú tiến trình**: ghi lại diễn biến của Page.
-- **Lịch sử**: ai đã đổi người phụ trách, tình trạng, trạng thái theo dõi hoặc lưu trữ, và khi nào.
+- **Lịch sử**: ai đã đổi người phụ trách, tình trạng hoặc lưu trữ, và khi nào.
 
 ### Dán nhiều link bài đăng
 
@@ -213,7 +218,7 @@ Thông báo chỉ gửi **sau 17:00 giờ Việt Nam** cho Page chưa đăng hô
 ## Quy tắc & lưu ý nghiệp vụ
 
 - **Link Page không được trùng** với Page khác trong hệ thống (dấu `/` ở cuối được bỏ qua khi so sánh). Link **bài đăng** cũng không được trùng trong cùng một Page.
-- **Chỉ Page đang theo dõi mới được tính** vào thống kê, thẻ KPI, tab **Hôm nay** và nhắc việc. Page bị tắt **Theo dõi**, đã **lưu trữ** hoặc có tình trạng chặn (như *Bị khoá*, *Đã bỏ*) bị loại ra.
+- **Chỉ Page còn hoạt động mới được tính** vào thống kê, thẻ KPI, tab **Hôm nay** và nhắc việc. Page đã **lưu trữ** hoặc có tình trạng chặn (như *Tạm ngừng*, *Bị khoá*, *Đã bỏ*) bị loại ra. Muốn tạm ngừng một Page, đổi **Tình trạng Page** sang *Tạm ngừng*.
 - Bài **không có ngày đăng** vẫn tính vào tổng bài nhưng không tính vào nhịp đăng — hãy luôn điền ngày (ô ngày mặc định là hôm nay).
 - Người tạo Page mặc định là người phụ trách. Chỉ người có quyền Sửa Fanpage phạm vi **Phòng ban** hoặc **Tất cả** mới giao Page cho người khác (phòng ban: chỉ giao trong phòng ban mình quản lý).
 - **Nền tảng, Tình trạng, Loại bài đã khoá** không chọn được cho dữ liệu mới; dữ liệu cũ vẫn hiện đúng. Các danh mục này không xoá được.
@@ -227,8 +232,8 @@ Thông báo chỉ gửi **sau 17:00 giờ Việt Nam** cho Page chưa đăng hô
 - **Không thấy cột Tiền nạp**: thiếu một trong bốn điều kiện ở mục *Quy tắc* — đây là chủ ý để không lộ dữ liệu.
 - **Số khách của tôi khác số của đồng nghiệp trên cùng Page**: số khách tính theo phạm vi khách hàng của từng người.
 - **Không thấy tab Data khách hàng**: bạn chưa có quyền xem Khách hàng.
-- **Page biến mất khỏi danh sách**: kiểm tra tab **Đã lưu trữ**, hoặc bộ lọc **Theo dõi** đang bật.
-- **Page không xuất hiện trong tab Hôm nay**: Page đã đăng hôm nay, đang ổn, hoặc không còn được theo dõi.
+- **Page biến mất khỏi danh sách**: kiểm tra tab **Đã lưu trữ**, hoặc các bộ lọc đang bật.
+- **Page không xuất hiện trong tab Hôm nay**: Page đã đăng hôm nay, đang ổn, hoặc đang tạm ngừng/lưu trữ.
 - **Không nhận được nhắc việc**: chỉ gửi sau 17:00, cho Page chưa đăng hôm nay; kiểm tra thêm tuỳ chọn thông báo của bạn.
 
 ## Xem thêm
