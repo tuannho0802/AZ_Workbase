@@ -20,6 +20,21 @@ import { hydratePersistedQueries, startQueryPersistence } from '@/lib/query-pers
 import { useAuthStore } from '@/lib/stores/auth.store';
 
 let globalMessage: MessageInstance | undefined;
+let globalQueryClient: QueryClient | undefined;
+let lastPermissionRefreshAt = 0;
+const PERMISSION_REFRESH_MIN_GAP_MS = 5000;
+
+/**
+ * Làm mới NGAY quyền của tôi (ma trận quyền + ẩn/hiện UI + badge Sidebar) - gọi khi BE trả 403 thiếu quyền, để Sidebar/trang
+ * tự ẩn mục vừa bị tắt thay vì chờ nhịp poll `permSig`. Giới hạn 1 lần / 5 giây (nhiều request cùng 403 chỉ làm mới 1 lần).
+ */
+export function refreshMyPermissions(now: number = Date.now()): boolean {
+  if (!globalQueryClient || now - lastPermissionRefreshAt < PERMISSION_REFRESH_MIN_GAP_MS) return false;
+  lastPermissionRefreshAt = now;
+  void globalQueryClient.invalidateQueries({ queryKey: ['my-permissions'] });
+  void globalQueryClient.invalidateQueries({ queryKey: ['ui-visibility-my-hidden'] });
+  return true;
+}
 
 export const showMessage = {
   success: (msg: string) => globalMessage?.success(msg),
@@ -55,6 +70,13 @@ export function AntdAppProvider({ children }: { children: React.ReactNode }) {
     hydratePersistedQueries(qc, useAuthStore.getState().user?.id);
     return qc;
   });
+
+  useEffect(() => {
+    globalQueryClient = queryClient;
+    return () => {
+      if (globalQueryClient === queryClient) globalQueryClient = undefined;
+    };
+  }, [queryClient]);
 
   useEffect(
     () => startQueryPersistence(queryClient, () => useAuthStore.getState().user?.id),

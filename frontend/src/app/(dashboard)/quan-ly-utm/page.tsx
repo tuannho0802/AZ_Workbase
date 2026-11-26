@@ -88,11 +88,10 @@ export default function QuanLyUtmPage() {
   // khách hàng thì không vào trang UTM.
   const canAccessPage = can('utms.my_managed') && can('customers.view');
   useEffect(() => {
-    if (!permissionsLoading && !canAccessPage) {
-      message.warning('Bạn không có quyền truy cập trang này');
-      router.replace('/');
-    }
-  }, [permissionsLoading, canAccessPage, router, message]);
+    // [AGENT] OLD CODE (giữ để rollback): message.warning('Bạn không có quyền truy cập trang này');
+    // NEW: redirect IM LẶNG (mục menu đã ẩn theo quyền).
+    if (!permissionsLoading && !canAccessPage) router.replace('/');
+  }, [permissionsLoading, canAccessPage, router]);
 
   const canView = can('utms.view');
   const canCreate = can('utms.create');

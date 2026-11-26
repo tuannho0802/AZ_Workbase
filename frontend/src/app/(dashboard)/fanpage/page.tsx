@@ -66,11 +66,10 @@ function FanpagePageContent() {
     // Khớp nav-config (`fanpages.view`) - không cho mở bằng URL trực tiếp khi thiếu quyền.
     const canView = can('fanpages.view');
     useEffect(() => {
-        if (!permissionsLoading && !canView) {
-            message.warning('Bạn không có quyền truy cập trang này');
-            router.replace('/');
-        }
-    }, [permissionsLoading, canView, router, message]);
+        // [AGENT] OLD CODE (giữ để rollback): message.warning('Bạn không có quyền truy cập trang này');
+        // NEW: redirect IM LẶNG (mục menu đã ẩn theo quyền).
+        if (!permissionsLoading && !canView) router.replace('/');
+    }, [permissionsLoading, canView, router]);
 
     const viewScope = scope('fanpages.view');
     // Người chỉ thấy Page của mình vào thẳng "Hôm nay"; Manager/Admin vào "Danh sách" (có thẻ KPI).

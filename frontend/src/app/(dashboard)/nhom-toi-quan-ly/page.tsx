@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Table, Tag, Typography, Space, Button, Empty, App } from 'antd';
+import { Table, Tag, Typography, Space, Button, Empty } from 'antd';
 import { LinkOutlined, TeamOutlined, CrownOutlined, UserOutlined } from '@ant-design/icons';
 import { useAuthStore } from '@/lib/stores/auth.store';
 import { useManagedByMe, useAllLinkGroups, useGroupCustomerCounts } from '@/lib/hooks/useLinkGroups';
@@ -16,33 +16,34 @@ const { Title, Text } = Typography;
 
 export default function MyManagedLinkGroupsPage() {
   const router = useRouter();
-  const { message } = App.useApp();
   const currentUser = useAuthStore((s) => s.user);
   const { can, isLoading: permissionsLoading } = useMyPermissions();
-  const { groups: managedGroups, isLoading } = useManagedByMe();
+  // Quyền truy cập trang (khớp nav-config `link_groups.my_managed`). Tắt quyền => KHÔNG gọi API nào của trang
+  // (trước đây gọi vô điều kiện rồi dính 403 + toast đỏ), chuyển về Trang chủ im lặng.
+  const canAccessPage = can('link_groups.my_managed');
+  const { groups: managedGroups, isLoading } = useManagedByMe(!permissionsLoading && canAccessPage);
   // Chỉ để lấy thêm url/category cho hiển thị - GroupManagersResult (BE)
   // không trả url/category vì đó không phải dữ liệu của tính năng phân
   // quyền chính/phụ. Endpoint GET /link-groups mở cho mọi user đã đăng
   // nhập nên ghép thêm ở đây là an toàn.
-  const { groups: allGroups, isLoading: loadingAll } = useAllLinkGroups();
+  const { groups: allGroups, isLoading: loadingAll } = useAllLinkGroups(!permissionsLoading && canAccessPage);
 
   // ⚠️ MỚI - trước đây trang này KHÔNG có route guard nào (mở cho MỌI role
   // đã đăng nhập, kể cả khi Admin đã tắt permission qua /phan-quyen) - khác
   // với mọi trang khác trong app đều tự chặn theo `useMyPermissions()`. Fix
   // khớp `permission: 'link_groups.my_managed'` mới thêm ở nav-config.tsx.
   useEffect(() => {
-    if (!permissionsLoading && !can('link_groups.my_managed')) {
-      message.warning('Bạn không có quyền truy cập trang này');
-      router.replace('/');
-    }
-  }, [permissionsLoading, can, router, message]);
+    // [AGENT] OLD CODE (giữ để rollback): message.warning('Bạn không có quyền truy cập trang này');
+    // NEW: redirect IM LẶNG (mục menu đã ẩn theo quyền; vào bằng URL thì chỉ cần đưa về Trang chủ, không toast).
+    if (!permissionsLoading && !canAccessPage) router.replace('/');
+  }, [permissionsLoading, canAccessPage, router]);
 
   const [managingGroup, setManagingGroup] = useState<{ id: number; name: string } | null>(null);
   const [viewingCustomersGroup, setViewingCustomersGroup] = useState<{ id: number; name: string } | null>(null);
 
   // Nút "Xem khách hàng (N)": BE đòi `customers.view` (+ phải là người được xem
   // nhóm đó) - thiếu quyền thì ẩn hẳn nút và không gọi API đếm.
-  const canViewCustomers = can('customers.view');
+  const canViewCustomers = canAccessPage && can('customers.view');
   const { counts: customerCounts } = useGroupCustomerCounts(canViewCustomers);
 
   // Search/filter CLIENT-SIDE: danh sách chỉ chứa nhóm mà chính user này
@@ -181,6 +182,9 @@ export default function MyManagedLinkGroupsPage() {
       ),
     },
   ];
+
+  // Chưa có quyền: không render gì (effect ở trên đã đưa về Trang chủ) - tránh nháy trang rỗng.
+  if (!permissionsLoading && !canAccessPage) return null;
 
   return (
     <div style={{ padding: 24 }}>

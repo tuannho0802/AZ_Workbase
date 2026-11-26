@@ -59,10 +59,11 @@ export const useLinkGroups = (categoryId: number | undefined, activeOnly = true)
 };
 
 /** Lấy TẤT CẢ group (mọi category, kể cả ẩn) - dùng cho trang quản lý admin */
-export const useAllLinkGroups = () => {
+export const useAllLinkGroups = (enabled = true) => {
   const { data, isLoading } = useQuery({
     queryKey: [...GROUP_KEY, 'all'],
     queryFn: () => linkGroupsApi.getAll(undefined, false),
+    enabled,
     // [AGENT] OLD CODE: staleTime: 60 * 1000,
     ...refDataQueryOptions(), // danh mục ít đổi: HTTP cache ?v= + refSig (link_categories/link_groups)
   });
@@ -179,10 +180,11 @@ export const useSetGroupMembership = () => {
  * liên kết" - admin thấy TẤT CẢ, user thường CHỈ thấy nhóm mình là Quản lý
  * chính hoặc phụ. Dùng cho trang "Nhóm tôi quản lý".
  */
-export const useManagedByMe = () => {
+export const useManagedByMe = (enabled = true) => {
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: MANAGED_BY_ME_KEY,
     queryFn: () => linkGroupManagersApi.listManagedByMe(),
+    enabled,
     // [AGENT] OLD: staleTime: 30 * 1000. NEW: dài (mutation quản lý đều invalidate MANAGED_BY_ME_KEY; refSig `link_groups` phủ tiền tố ['link-groups']).
     ...refDataQueryOptions(),
   });

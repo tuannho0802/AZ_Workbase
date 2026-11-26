@@ -8456,3 +8456,24 @@ Now [deploy]
 > - Các view Bảng/Kanban/Lịch tháng CHƯA hiện Link sản phẩm.
 
 ---
+
+## [2026-11-26 17:30] | Tắt quyền 3 trang Quản lý (Nhóm tôi quản lý / Quản lý UTM / Quản lý Fanpage) - hết toast 403, Sidebar tự ẩn | [Status: Success (FE tsc sạch; vitest app+api+common+fanpage+utms+hooks 56 file/421 test pass; ESLint không thêm lỗi mới; CHƯA chạy `next build` và chưa thử trên trình duyệt)]
+
+**Actor:** Agent
+**Files Changed:**
+- `frontend/src/lib/api/permission-denied.ts` (MỚI, + test) — `isSilentPermissionDenied()`: 403 trên GET của `/link-groups`, `/link-categories`, `/utms`, `/fanpages`, `/fanpage-*` không toast
+- `frontend/src/components/common/AntdAppProvider.tsx` (+ `AntdAppProvider.refresh.test.tsx`) — `refreshMyPermissions()` (invalidate `my-permissions` + `ui-visibility-my-hidden`, tối đa 1 lần/5 giây)
+- `frontend/src/lib/api/axios-instance.ts` — mọi 403 (trừ PASSWORD_CHANGE_REQUIRED và chính `/roles/my-permissions`) gọi `refreshMyPermissions()`; 403 của GET thuộc 3 module trên không toast
+- `frontend/src/lib/hooks/useLinkGroups.ts` — `useManagedByMe(enabled)`, `useAllLinkGroups(enabled)` (mặc định true)
+- `frontend/src/app/(dashboard)/nhom-toi-quan-ly/page.tsx` (+ `page.permission.test.tsx`) — gate mọi API theo `link_groups.my_managed`, redirect im lặng, không render khi thiếu quyền
+- `.../quan-ly-utm/page.tsx`, `.../fanpage/page.tsx` — bỏ toast cảnh báo khi redirect (đã gate API từ trước)
+- `.../profile/page.tsx` — chỉ gọi managed-by-me/link-groups khi có `link_groups.my_managed` hoặc `link_groups.view`
+
+**Root Cause:**
+> FE giữ bản quyền CŨ (cache `my-permissions` 30 phút, lưu cả localStorage, chỉ làm mới theo nhịp poll `permSig` ~5 phút) nên sau khi Admin tắt quyền (đã kiểm tra BE gộp đúng Toàn cục -> Phòng ban -> Vị trí) Sidebar vẫn hiện mục và trang vẫn gọi API -> BE 403 -> toast đỏ. Riêng `/nhom-toi-quan-ly` và Profile còn gọi `managed-by-me`/`link-groups` KHÔNG kiểm quyền.
+
+**Notes:**
+> - BE KHÔNG đổi: `GET /link-groups/managed-by-me` và `GET /utms/managed-by-me` hiện KHÔNG có `@RequirePermission` (`link_groups.my_managed`/`utms.my_managed` chỉ gate ở FE) - nếu cần chặn thật ở BE thì phải làm riêng.
+> - Toast 403 của hành động chủ động (POST/PUT/PATCH/DELETE) giữ nguyên.
+
+---

@@ -116,8 +116,10 @@ function ProfilePortal({ userId, onDeleted }: { userId: number; onDeleted?: () =
   // (không chỉ của admin) -> phải tự lọc ở client theo đúng userId đang xem
   // (áp dụng luôn cho cả trường hợp tự xem mình - vô hại vì lúc đó mọi dòng
   // trả về vốn đã thuộc về mình sẵn). Giống hệt cách /nhom-toi-quan-ly làm.
-  const { groups: managedGroups, isLoading: loadingManaged, refetch: refetchManaged } = useManagedByMe();
-  const { groups: allGroups, isLoading: loadingAllGroups } = useAllLinkGroups();
+  // Tắt quyền `link_groups.my_managed` (và không có `link_groups.view`) => không gọi 2 API này, mục Nhóm phụ trách để trống.
+  const canSeeManagedGroups = can('link_groups.my_managed') || can('link_groups.view');
+  const { groups: managedGroups, isLoading: loadingManaged, refetch: refetchManaged } = useManagedByMe(canSeeManagedGroups);
+  const { groups: allGroups, isLoading: loadingAllGroups } = useAllLinkGroups(canSeeManagedGroups);
 
   const isSelf = currentUser?.id === userId;
 

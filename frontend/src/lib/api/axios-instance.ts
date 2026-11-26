@@ -1,5 +1,6 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { showMessage } from '@/components/common/AntdAppProvider';
+import { showMessage, refreshMyPermissions } from '@/components/common/AntdAppProvider';
+import { isSilentPermissionDenied } from './permission-denied';
 import { useAuthStore } from '../stores/auth.store';
 import { bearerToken, refreshAccessTokenShared } from '../auth/shared-refresh';
 import { ensureFreshAccessToken } from '../auth/proactive-refresh';
@@ -167,6 +168,16 @@ axiosInstance.interceptors.response.use(
     ) {
       redirectToPasswordChange((error.response.data as { reason?: string }).reason === 'EXPIRED');
       return Promise.reject(error);
+    }
+
+    // 403 thiếu quyền (không phải PASSWORD_CHANGE_REQUIRED, đã xử lý ở trên): quyền của tôi có thể vừa bị đổi -> làm mới
+    // ngay để Sidebar/trang tự ẩn. Bỏ qua chính request lấy quyền (tránh vòng lặp).
+    if (error.response?.status === 403 && !reqUrl.includes('/roles/my-permissions')) {
+      refreshMyPermissions();
+      // Tải trang thụ động (GET) của 3 trang Quản lý: không toast (xem `permission-denied.ts`).
+      if (isSilentPermissionDenied(403, originalRequest?.method, reqUrl)) {
+        return Promise.reject(error);
+      }
     }
 
     // Handle other errors
