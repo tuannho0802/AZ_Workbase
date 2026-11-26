@@ -5,10 +5,9 @@ import { Collapse, Badge, Tag, Typography, Empty, Spin } from 'antd';
 import dayjs from 'dayjs';
 import 'dayjs/locale/vi';
 import { PeriodicTask } from '@/lib/api/periodic-tasks.api';
-import { TaskMiniCard } from './TaskMiniCard';
-import { TaskActionsBar, TaskActionsBarProps } from './TaskActionsBar';
-import { TaskChainGroupedList } from './TaskChainConnector';
-import { TaskChainInfo, TaskLinkEdge, sortTasksByPeriodHierarchy } from '@/lib/utils/taskLinkChains';
+import { TaskActionsBarProps } from './TaskActionsBar';
+import { PeriodicTaskSheetTable } from './PeriodicTaskSheetTable';
+import { TaskChainInfo, TaskLinkEdge } from '@/lib/utils/taskLinkChains';
 
 dayjs.locale('vi');
 
@@ -64,7 +63,7 @@ export interface PeriodicTasksAgendaViewProps extends ActionHandlers {
  * filter từ trang cha (`cong-viec-dinh-ky/page.tsx`), mirror đúng nguyên tắc
  * "FE chỉ việc gọi bình thường" ở JSDoc đầu file đó.
  */
-export function PeriodicTasksAgendaView({ tasks, loading, chains, edges, resolveChainTask, iconActions = true, ...actions }: PeriodicTasksAgendaViewProps) {
+export function PeriodicTasksAgendaView({ tasks, loading, chains, resolveChainTask, iconActions = true, ...actions }: PeriodicTasksAgendaViewProps) {
     const groups = useMemo(() => {
         const map = new Map<string, PeriodicTask[]>();
         for (const t of tasks) {
@@ -133,40 +132,27 @@ export function PeriodicTasksAgendaView({ tasks, loading, chains, edges, resolve
                             )}
                         </span>
                     ),
+                    // [AGENT] OLD CODE (giữ để rollback): <TaskChainGroupedList ... renderTask={(task) => <TaskMiniCard ... footer={<TaskActionsBar .../>} />} />
+                    // NEW (2026-11-26): bảng kiểu sheet gom theo Người phụ trách (xem PeriodicTaskSheetTable).
                     children: (
-                        <TaskChainGroupedList
-                            tasks={chains ? sortTasksByPeriodHierarchy(groupTasks, chains) : groupTasks}
-                            chains={chains ?? new Map()}
-                            edges={edges ?? []}
-                            renderTask={(task) => (
-                                <TaskMiniCard
-                                    key={task.id}
-                                    task={task}
-                                    flagOverdue
-                                    chainInfo={chains?.get(task.id)}
-                                    resolveChainTask={resolveChainTask}
-                                    footer={
-                                        <TaskActionsBar
-                                            task={task}
-                                            canEdit={actions.canEdit}
-                                            canEditLocked={actions.canEditLocked}
-                                            canApprove={actions.canApprove}
-                                            canDelete={actions.canDelete}
-                                            onLink={actions.onLink}
-                                            onChecklist={actions.onChecklist}
-                                            onCustomers={actions.onCustomers}
-                                            onAudit={actions.onAudit}
-                                            onEdit={actions.onEdit}
-                                            onLock={actions.onLock}
-                                            onUnlock={actions.onUnlock}
-                                            onDelete={actions.onDelete}
-                                            unlockLoading={actions.isUnlocking(task.id)}
-                                            wrap
-                                            iconOnly={iconActions}
-                                        />
-                                    }
-                                />
-                            )}
+                        <PeriodicTaskSheetTable
+                            tasks={groupTasks}
+                            chains={chains}
+                            resolveChainTask={resolveChainTask}
+                            iconActions={iconActions}
+                            canEdit={actions.canEdit}
+                            canEditLocked={actions.canEditLocked}
+                            canApprove={actions.canApprove}
+                            canDelete={actions.canDelete}
+                            onLink={actions.onLink}
+                            onChecklist={actions.onChecklist}
+                            onCustomers={actions.onCustomers}
+                            onAudit={actions.onAudit}
+                            onEdit={actions.onEdit}
+                            onLock={actions.onLock}
+                            onUnlock={actions.onUnlock}
+                            onDelete={actions.onDelete}
+                            isUnlocking={actions.isUnlocking}
                         />
                     ),
                 };
