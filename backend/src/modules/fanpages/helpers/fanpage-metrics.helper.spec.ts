@@ -9,8 +9,9 @@ import {
     isValidMonth,
     latestFollowerMetric,
     monthEnd,
+    normalizePeriod,
+    periodsOverlap,
     pickGrowthGroupBy,
-    postInteractions,
     resolveStatsRange,
     validateSnapshot,
     windowGain,
@@ -56,14 +57,14 @@ describe('fanpage-metrics.helper', () => {
         });
         it('số âm, thập phân, quá lớn', () => {
             expect(validateSnapshot('2026-11-12', { followers: -1 }, today)).toMatch(/không âm/);
-            expect(validateSnapshot('2026-11-12', { reach: 1.5 }, today)).toMatch(/không âm/);
+            expect(validateSnapshot('2026-11-12', { views: 1.5 }, today)).toMatch(/không âm/);
             expect(validateSnapshot('2026-11-12', { views: 3_000_000_000 }, today)).toMatch(/quá lớn/);
         });
         it('rỗng hoàn toàn bị chặn, số 0 hợp lệ', () => {
             expect(validateSnapshot('2026-11-12', {}, today)).toMatch(/ít nhất 1/);
             expect(validateSnapshot('2026-11-12', { followers: null }, today)).toMatch(/ít nhất 1/);
             expect(validateSnapshot('2026-11-12', { followers: 0 }, today)).toBeNull();
-            expect(hasAnyMetric({ reach: 0 })).toBe(true);
+            expect(hasAnyMetric({ views: 0 })).toBe(true);
         });
     });
 
@@ -164,7 +165,7 @@ describe('fanpage-metrics.helper', () => {
         });
     });
 
-    describe('bucketPostsByWeek / heatmap / postInteractions', () => {
+    describe('bucketPostsByWeek / heatmap', () => {
         it('đủ mọi tuần kể cả 0 bài, bỏ ngày ngoài kỳ', () => {
             const out = bucketPostsByWeek(
                 [
@@ -195,9 +196,32 @@ describe('fanpage-metrics.helper', () => {
             expect(buildHeatmap([], '2026-11-12', 0).weeks).toBe(1);
             expect(buildHeatmap([], '2026-11-12', 999).weeks).toBe(52);
         });
-        it('postInteractions chỉ cộng số đã nhập', () => {
-            expect(postInteractions({ likes: 5, comments: null, shares: 2 })).toBe(7);
-            expect(postInteractions({ likes: null, comments: null, shares: null })).toBe(0);
+    });
+
+    describe('kỳ số liệu (GĐ8): normalizePeriod / periodsOverlap', () => {
+        const d = '2026-11-12';
+        it('không gửi / null / bằng ngày cuối = kỳ 1 ngày -> lưu NULL', () => {
+            expect(normalizePeriod(d, undefined, true)).toEqual({ ok: true, periodStart: null });
+            expect(normalizePeriod(d, null, false)).toEqual({ ok: true, periodStart: null });
+            expect(normalizePeriod(d, d, false)).toEqual({ ok: true, periodStart: null });
+        });
+        it('kỳ nhiều ngày hợp lệ (tuần, tháng) khi có Lượt xem', () => {
+            expect(normalizePeriod(d, '2026-11-06', true)).toEqual({ ok: true, periodStart: '2026-11-06' });
+            expect(normalizePeriod('2026-11-30', '2026-11-01', true)).toEqual({ ok: true, periodStart: '2026-11-01' });
+        });
+        it('kỳ nhiều ngày mà không có Lượt xem -> lỗi', () => {
+            const r = normalizePeriod(d, '2026-11-06', false);
+            expect(r.ok).toBe(false);
+        });
+        it('ngày đầu sau ngày cuối, sai định dạng, kỳ quá 366 ngày -> lỗi', () => {
+            expect(normalizePeriod(d, '2026-11-13', true).ok).toBe(false);
+            expect(normalizePeriod(d, '2026-02-30', true).ok).toBe(false);
+            expect(normalizePeriod(d, '2025-01-01', true).ok).toBe(false);
+        });
+        it('periodsOverlap: chạm biên là trùng, liền kề thì không', () => {
+            expect(periodsOverlap('2026-11-01', '2026-11-07', '2026-11-07', '2026-11-10')).toBe(true);
+            expect(periodsOverlap('2026-11-01', '2026-11-07', '2026-11-08', '2026-11-10')).toBe(false);
+            expect(periodsOverlap('2026-11-03', '2026-11-04', '2026-11-01', '2026-11-30')).toBe(true);
         });
     });
 });

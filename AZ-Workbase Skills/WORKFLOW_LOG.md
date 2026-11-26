@@ -8408,3 +8408,19 @@ Now [deploy]
 > - Việc người dùng phải làm: chạy migration (sau backup) trước deploy; `npm run guides:sync` (dry-run rồi --apply); click-through 4 role x tab (bảng ở PLAN GĐ7); đặt Uptime monitor gọi `/api/fanpages-cron/reminders` mỗi 30 phút.
 
 ---
+
+## [2026-11-26 10:30] | GĐ8 Fanpage - Tinh giản nhập tay, Patch 1 (BE) | [Status: Success (BE tsc sạch; nest build OK; jest toàn BE 194 suite/3.085 test pass; CHƯA chạy migration trên MySQL thật)]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/database/migrations/1786395000000-AddFanpageSnapshotPeriod.ts` (MỚI) — thêm `fanpage_metric_snapshots.period_start DATE NULL`
+- `backend/src/database/entities/fanpage-metric-snapshot.entity.ts`, `fanpage-post.entity.ts` — bỏ `reach/engagement`, `likes/comments/shares` khỏi entity (cột DB giữ nguyên); thêm `periodStart`
+- `backend/src/modules/fanpages/`: `helpers/fanpage-metrics.helper.ts` (`normalizePeriod`, `periodsOverlap`, bỏ `postInteractions`), `dto/fanpage-metrics.dto.ts` (`periodStart`), `dto/fanpage-post.dto.ts`, `fanpage-metrics.service.ts` (kỳ + kiểm tra trùng kỳ, lỗi `OVERLAP`), `fanpage-posts.service.ts`, `fanpage-stats.service.ts` (top bài theo views), `fanpage-export.{service,model}.ts` + spec liên quan
+- `AZ-Workbase Skills/PLAN_FANPAGE_ANALYTICS.md` — thêm mục 16 (GĐ8) + banner v1.3
+
+**Notes:**
+> - Kỳ số liệu: `snapshot_date` = ngày cuối kỳ, `period_start` NULL = 1 ngày; kỳ nhiều ngày bắt buộc có Lượt xem; trùng kỳ Lượt xem -> 409 `FANPAGE_SNAPSHOT_OVERLAP`.
+> - `forbidNonWhitelisted` => FE cũ còn gửi reach/engagement/likes/comments/shares sẽ 400: deploy BE+FE cùng đợt.
+> - CHƯA làm: Patch FE, Patch 2 (bỏ `is_active`, chờ xác nhận), M8 (DROP cột cũ, cần backup + xác nhận).
+
+---

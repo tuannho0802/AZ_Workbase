@@ -31,7 +31,7 @@ function build(opts: { existing?: Record<string, unknown> | null; prevFollowers?
     return { svc, repo, targetRepo, access, scoped, audit, page };
 }
 
-const row = (over: Record<string, unknown> = {}) => ({ id: 50, fanpageId: 1, snapshotDate: DATE, followers: 1000, reach: null, engagement: null, views: null, note: null, updatedAt: T1, ...over });
+const row = (over: Record<string, unknown> = {}) => ({ id: 50, fanpageId: 1, snapshotDate: DATE, followers: 1000, views: null, periodStart: null, note: null, updatedAt: T1, ...over });
 
 describe('FanpageMetricsService.upsert/saveRow', () => {
     it('tạo mới: ghi createdBy/updatedBy + audit', async () => {
@@ -75,11 +75,11 @@ describe('FanpageMetricsService.upsert/saveRow', () => {
     });
 
     describe('gộp trường (undefined giữ, null xoá)', () => {
-        it('không gửi followers -> giữ nguyên followers cũ khi chỉ thêm reach', async () => {
+        it('không gửi followers -> giữ nguyên followers cũ khi chỉ thêm lượt xem', async () => {
             const { svc, repo } = build({ existing: row({ followers: 1000 }) });
             repo.createQueryBuilder.mockReturnValue(chainReturning({ id: 50 }));
-            await svc.upsert(1, DATE, { reach: 55 }, user);
-            expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ followers: 1000, reach: 55 }));
+            await svc.upsert(1, DATE, { views: 55 }, user);
+            expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ followers: 1000, views: 55, periodStart: null }));
         });
         it('xoá hết mọi chỉ số -> 400 (snapshot rỗng vô nghĩa)', async () => {
             const { svc, repo } = build({ existing: row({ followers: 10 }) });
@@ -200,6 +200,73 @@ describe('FanpageMetricsService.followerSeries/latestFollowers với Page chưa 
 });
 
 /** QueryBuilder giả cho getView(): mọi bước trả về chính nó, getOneOrFail trả dòng. */
+describe('FanpageMetricsService - kỳ Lượt xem (GĐ8)', () => {
+    it('lưu kỳ tuần: periodStart được ghi, Follow vẫn là mốc ngày cuối', async () => {
+        const { svc, repo } = build();
+        repo.createQueryBuilder.mockReturnValue(chainReturning({ id: 50 }));
+        await svc.upsert(1, DATE, { followers: 500, views: 9000, periodStart: '2026-11-06' }, user);
+        expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ snapshotDate: DATE, followers: 500, views: 9000, periodStart: '2026-11-06' }));
+    });
+
+    it('periodStart bằng ngày cuối -> lưu NULL (kỳ 1 ngày)', async () => {
+        const { svc, repo } = build();
+        repo.createQueryBuilder.mockReturnValue(chainReturning({ id: 50 }));
+        await svc.upsert(1, DATE, { views: 10, periodStart: DATE }, user);
+        expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ periodStart: null }));
+    });
+
+    it('kỳ nhiều ngày mà không có Lượt xem -> 400, không ghi', async () => {
+        const { svc, repo } = build();
+        await expect(svc.upsert(1, DATE, { followers: 100, periodStart: '2026-11-06' }, user)).rejects.toBeInstanceOf(BadRequestException);
+        expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('không gửi periodStart khi sửa -> giữ kỳ cũ; gửi null -> về kỳ 1 ngày', async () => {
+        const a = build({ existing: row({ views: 100, periodStart: '2026-11-06' }) });
+        a.repo.createQueryBuilder.mockReturnValue(chainReturning({ id: 50 }));
+        await a.svc.upsert(1, DATE, { views: 120 }, user);
+        expect(a.repo.save).toHaveBeenCalledWith(expect.objectContaining({ views: 120, periodStart: '2026-11-06' }));
+        const b = build({ existing: row({ views: 100, periodStart: '2026-11-06' }) });
+        b.repo.createQueryBuilder.mockReturnValue(chainReturning({ id: 50 }));
+        await b.svc.upsert(1, DATE, { periodStart: null }, user);
+        expect(b.repo.save).toHaveBeenCalledWith(expect.objectContaining({ periodStart: null }));
+    });
+
+    it('xoá Lượt xem (null) thì kỳ cũ cũng bỏ, không bị lỗi "kỳ nhiều ngày thiếu Lượt xem"', async () => {
+        const { svc, repo } = build({ existing: row({ followers: 10, views: 100, periodStart: '2026-11-06' }) });
+        repo.createQueryBuilder.mockReturnValue(chainReturning({ id: 50 }));
+        await svc.upsert(1, DATE, { views: null }, user);
+        expect(repo.save).toHaveBeenCalledWith(expect.objectContaining({ views: null, periodStart: null }));
+    });
+
+    it('kỳ trùng kỳ khác đã nhập Lượt xem -> 409 FANPAGE_SNAPSHOT_OVERLAP, không ghi', async () => {
+        const { svc, repo } = build();
+        repo.query.mockResolvedValue([{ s: '2026-11-01', e: '2026-11-08' }]);
+        const err = await svc.upsert(1, DATE, { views: 500, periodStart: '2026-11-06' }, user).catch((e) => e);
+        expect(err).toBeInstanceOf(ConflictException);
+        expect(err.getResponse()).toEqual(expect.objectContaining({ code: 'FANPAGE_SNAPSHOT_OVERLAP' }));
+        expect(repo.save).not.toHaveBeenCalled();
+    });
+
+    it('dòng 1 ngày nhập Lượt xem khi không có kỳ nào trùng -> ghi bình thường', async () => {
+        const { svc, repo } = build();
+        repo.createQueryBuilder.mockReturnValue(chainReturning({ id: 50 }));
+        await svc.upsert(1, DATE, { views: 77 }, user);
+        expect(repo.save).toHaveBeenCalled();
+    });
+
+    it('lưới nhập nhanh: dòng kỳ trùng trả OVERLAP theo từng dòng, dòng khác vẫn lưu', async () => {
+        const { svc, repo } = build();
+        repo.query.mockResolvedValueOnce([{ s: '2026-11-01', e: '2026-11-08' }]);
+        const res = await svc.bulk(
+            { date: DATE, rows: [{ fanpageId: 1, views: 5, periodStart: '2026-11-06' }, { fanpageId: 2, views: 6 }] },
+            user,
+        );
+        expect(res.errors).toEqual([expect.objectContaining({ fanpageId: 1, code: 'OVERLAP' })]);
+        expect(res.saved.map((r) => r.fanpageId)).toEqual([2]);
+    });
+});
+
 function chainReturning(result: unknown) {
     const qb: Record<string, unknown> = {};
     for (const m of ['leftJoin', 'addSelect', 'where']) qb[m] = jest.fn(() => qb);

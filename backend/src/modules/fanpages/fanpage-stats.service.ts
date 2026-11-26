@@ -65,10 +65,6 @@ export interface TopPostRow {
     url: string;
     postedDate: string | null;
     views: number | null;
-    likes: number | null;
-    comments: number | null;
-    shares: number | null;
-    interactions: number;
 }
 
 export interface TopPostsResponse {
@@ -86,10 +82,6 @@ type RawTopPost = {
     url: string;
     postedDate: string | null;
     views: number | string | null;
-    likes: number | string | null;
-    comments: number | string | null;
-    shares: number | string | null;
-    interactions: number | string;
 };
 
 const nOrNull = (v: number | string | null): number | null => (v == null ? null : Number(v));
@@ -183,7 +175,7 @@ export class FanpageStatsService {
         return { from, to, weeks, totalPosts: weeks.reduce((s, w) => s + w.count, 0), weeklyTarget };
     }
 
-    /** `GET /fanpages/stats/top-posts` - xếp theo like + comment + share; chỉ bài ĐÃ nhập số liệu (bỏ NULL). */
+    /** `GET /fanpages/stats/top-posts` - xếp theo Lượt xem; chỉ bài ĐÃ nhập lượt xem (bỏ NULL). */
     async topPosts(user: FanpageCaller, q: TopPostsQueryDto): Promise<TopPostsResponse> {
         const { from, to } = this.range(q);
         const limit = q.limit ?? 10;
@@ -198,30 +190,25 @@ export class FanpageStatsService {
                     .createQueryBuilder('p')
                     .where('p.fanpage_id IN (:...ids)', { ids: batch })
                     .andWhere('p.posted_date BETWEEN :from AND :to', { from, to });
-            const hasMetric = '(p.likes IS NOT NULL OR p.comments IS NOT NULL OR p.shares IS NOT NULL OR p.views IS NOT NULL)';
             const [top, without] = await Promise.all([
                 base()
-                    .andWhere('(p.likes IS NOT NULL OR p.comments IS NOT NULL OR p.shares IS NOT NULL)')
+                    .andWhere('p.views IS NOT NULL')
                     .select('p.id', 'id')
                     .addSelect('p.fanpage_id', 'fanpageId')
                     .addSelect('p.title', 'title')
                     .addSelect('p.url', 'url')
                     .addSelect("DATE_FORMAT(p.posted_date, '%Y-%m-%d')", 'postedDate')
                     .addSelect('p.views', 'views')
-                    .addSelect('p.likes', 'likes')
-                    .addSelect('p.comments', 'comments')
-                    .addSelect('p.shares', 'shares')
-                    .addSelect('(COALESCE(p.likes, 0) + COALESCE(p.comments, 0) + COALESCE(p.shares, 0))', 'interactions')
-                    .orderBy('interactions', 'DESC')
+                    .orderBy('p.views', 'DESC')
                     .addOrderBy('p.id', 'DESC')
                     .limit(limit)
                     .getRawMany<RawTopPost>(),
-                base().andWhere(`NOT ${hasMetric}`).getCount(),
+                base().andWhere('p.views IS NULL').getCount(),
             ]);
             merged.push(...top);
             postsWithoutMetrics += without;
         }
-        merged.sort((a, b) => Number(b.interactions) - Number(a.interactions) || Number(b.id) - Number(a.id));
+        merged.sort((a, b) => Number(b.views) - Number(a.views) || Number(b.id) - Number(a.id));
         return {
             from,
             to,
@@ -234,10 +221,6 @@ export class FanpageStatsService {
                 url: r.url,
                 postedDate: r.postedDate,
                 views: nOrNull(r.views),
-                likes: nOrNull(r.likes),
-                comments: nOrNull(r.comments),
-                shares: nOrNull(r.shares),
-                interactions: Number(r.interactions),
             })),
         };
     }

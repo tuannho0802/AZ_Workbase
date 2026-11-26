@@ -6,6 +6,7 @@ import { METRIC_MAX_VALUE } from '../helpers/fanpage-metrics.helper';
 const URL_OPTS = { require_protocol: true, protocols: ['http', 'https'], require_tld: true };
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** Bài đăng CHỈ giữ lượt xem (PLAN GĐ8): không còn thích/bình luận/chia sẻ. */
 class PostMetricsDto {
     @ApiPropertyOptional({ description: 'Lượt xem (nhập tay). null = xoá số đã nhập.' })
     @IsOptional()
@@ -14,30 +15,6 @@ class PostMetricsDto {
     @Min(0, { message: 'Lượt xem không được âm' })
     @Max(METRIC_MAX_VALUE, { message: 'Lượt xem quá lớn' })
     views?: number | null;
-
-    @ApiPropertyOptional({ description: 'Lượt thích (nhập tay). null = xoá số đã nhập.' })
-    @IsOptional()
-    @ValidateIf((_o, v) => v !== null)
-    @IsInt({ message: 'Lượt thích phải là số nguyên' })
-    @Min(0, { message: 'Lượt thích không được âm' })
-    @Max(METRIC_MAX_VALUE, { message: 'Lượt thích quá lớn' })
-    likes?: number | null;
-
-    @ApiPropertyOptional({ description: 'Lượt bình luận (nhập tay). null = xoá số đã nhập.' })
-    @IsOptional()
-    @ValidateIf((_o, v) => v !== null)
-    @IsInt({ message: 'Lượt bình luận phải là số nguyên' })
-    @Min(0, { message: 'Lượt bình luận không được âm' })
-    @Max(METRIC_MAX_VALUE, { message: 'Lượt bình luận quá lớn' })
-    comments?: number | null;
-
-    @ApiPropertyOptional({ description: 'Lượt chia sẻ (nhập tay). null = xoá số đã nhập.' })
-    @IsOptional()
-    @ValidateIf((_o, v) => v !== null)
-    @IsInt({ message: 'Lượt chia sẻ phải là số nguyên' })
-    @Min(0, { message: 'Lượt chia sẻ không được âm' })
-    @Max(METRIC_MAX_VALUE, { message: 'Lượt chia sẻ quá lớn' })
-    shares?: number | null;
 }
 
 /** Loại bài (E5a): id của `fanpage_post_types`; null = bỏ phân loại. Service kiểm tra tồn tại + chưa khoá. */

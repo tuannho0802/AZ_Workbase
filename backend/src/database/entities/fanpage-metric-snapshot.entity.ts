@@ -4,7 +4,7 @@ import { Fanpage } from './fanpage.entity';
 
 /**
  * Số liệu định kỳ của Page do NHÂN VIÊN NHẬP TAY (không gọi API Meta/nền tảng - ràng buộc dự án).
- * 1 dòng / (Page, ngày): UNIQUE (fanpage_id, snapshot_date) để lưới nhập và Drawer cùng upsert (PLAN X7).
+ * 1 dòng / (Page, ngày CUỐI kỳ): UNIQUE (fanpage_id, snapshot_date) để lưới nhập và Drawer cùng upsert (PLAN X7).
  * `snapshot_date` là DATE thuần (YYYY-MM-DD, giờ VN) - mysql2 trả string, không dính múi giờ.
  */
 @Entity('fanpage_metric_snapshots')
@@ -27,14 +27,14 @@ export class FanpageMetricSnapshot {
     @Column({ type: 'int', unsigned: true, nullable: true, default: null })
     followers: number | null;
 
-    @Column({ type: 'int', unsigned: true, nullable: true, default: null })
-    reach: number | null;
-
-    @Column({ type: 'int', unsigned: true, nullable: true, default: null })
-    engagement: number | null;
-
+    // Lượt xem KÊNH trong cả kỳ [period_start, snapshot_date]. Cột `reach`/`engagement` cũ vẫn còn trong DB (nullable) nhưng
+    // đã bỏ khỏi entity/API - sẽ DROP ở migration riêng sau khi backup (PLAN GĐ8).
     @Column({ type: 'int', unsigned: true, nullable: true, default: null })
     views: number | null;
+
+    // Ngày đầu của kỳ `views`. NULL = kỳ 1 ngày (= snapshot_date). `followers` luôn là mốc tại `snapshot_date` (ngày cuối kỳ).
+    @Column({ name: 'period_start', type: 'date', nullable: true, default: null })
+    periodStart: string | null;
 
     @Column({ type: 'varchar', length: 255, nullable: true, default: null })
     note: string | null;

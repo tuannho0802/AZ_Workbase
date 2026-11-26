@@ -12,7 +12,7 @@ import { postUrlKey } from './helpers/fanpage-url.helper';
 
 const blankToNull = (v: string | null | undefined): string | null => (v == null || v.trim() === '' ? null : v.trim());
 
-const POST_METRIC_KEYS = ['views', 'likes', 'comments', 'shares'] as const;
+const POST_METRIC_KEYS = ['views'] as const;
 type PostMetricPatch = Partial<Record<(typeof POST_METRIC_KEYS)[number], number | null>>;
 
 /** Chỉ lấy các số liệu bài CÓ gửi lên (undefined = giữ nguyên; null = xoá số đã nhập). */
@@ -98,9 +98,6 @@ export class FanpagePostsService {
             postTypeId: post.postTypeId ?? null,
             note: post.note,
             views: post.views,
-            likes: post.likes,
-            comments: post.comments,
-            shares: post.shares,
         };
 
         const patch: Partial<FanpagePost> = {};

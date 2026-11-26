@@ -13,7 +13,7 @@ const toIdArray = ({ value }: { value: unknown }): unknown => {
     return parts.map(Number);
 };
 
-/** 4 chỉ số nhập tay. `undefined` = giữ nguyên giá trị cũ, `null` = xoá giá trị đó (ô để trống ở lưới thì KHÔNG gửi). */
+/** 2 chỉ số nhập tay (Follow kênh, Lượt xem kênh). `undefined` = giữ nguyên giá trị cũ, `null` = xoá giá trị đó (ô để trống ở lưới thì KHÔNG gửi). */
 export class MetricValuesDto {
     @ApiPropertyOptional({ description: 'Số follower/like Page' })
     @IsOptional()
@@ -23,23 +23,7 @@ export class MetricValuesDto {
     @Max(METRIC_MAX_VALUE, { message: 'Followers quá lớn' })
     followers?: number | null;
 
-    @ApiPropertyOptional({ description: 'Lượt tiếp cận' })
-    @IsOptional()
-    @ValidateIf((_o, v) => v !== null)
-    @IsInt({ message: 'Reach phải là số nguyên' })
-    @Min(0, { message: 'Reach không được âm' })
-    @Max(METRIC_MAX_VALUE, { message: 'Reach quá lớn' })
-    reach?: number | null;
-
-    @ApiPropertyOptional({ description: 'Lượt tương tác' })
-    @IsOptional()
-    @ValidateIf((_o, v) => v !== null)
-    @IsInt({ message: 'Tương tác phải là số nguyên' })
-    @Min(0, { message: 'Tương tác không được âm' })
-    @Max(METRIC_MAX_VALUE, { message: 'Tương tác quá lớn' })
-    engagement?: number | null;
-
-    @ApiPropertyOptional({ description: 'Lượt xem' })
+    @ApiPropertyOptional({ description: 'Lượt xem KÊNH trong cả kỳ (1 ngày / tuần / tháng / nhiều ngày)' })
     @IsOptional()
     @ValidateIf((_o, v) => v !== null)
     @IsInt({ message: 'Lượt xem phải là số nguyên' })
@@ -56,6 +40,17 @@ export class MetricValuesDto {
 }
 
 export class UpsertSnapshotDto extends MetricValuesDto {
+    @ApiPropertyOptional({
+        example: '2026-11-03',
+        nullable: true,
+        description:
+            'Ngày ĐẦU của kỳ Lượt xem (ngày CUỐI = `:date`/`date`). Bỏ trống/null/bằng ngày cuối = kỳ 1 ngày; undefined khi sửa = giữ kỳ cũ. Kỳ nhiều ngày bắt buộc có Lượt xem; không được trùng kỳ khác đã nhập Lượt xem.',
+    })
+    @IsOptional()
+    @ValidateIf((_o, v) => v !== null)
+    @Matches(DATE_RE, { message: DATE_MSG })
+    periodStart?: string | null;
+
     @ApiPropertyOptional({
         description:
             '`updatedAt` của dòng lúc bạn đọc (null = lúc đọc CHƯA có dòng). Có gửi và dòng đã bị người khác sửa -> 409 (X24). Bỏ trống = ghi đè.',

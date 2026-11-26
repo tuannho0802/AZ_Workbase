@@ -47,18 +47,16 @@ export interface ExportPostRow {
     url: string;
     createdBy: string | null;
     views: number | null;
-    likes: number | null;
-    comments: number | null;
-    shares: number | null;
     note: string | null;
 }
 
 export interface ExportSnapshotRow {
     pageName: string;
+    /** Ngày CUỐI kỳ (mốc Follow). */
     date: string;
+    /** Ngày ĐẦU kỳ Lượt xem (= `date` nếu kỳ 1 ngày). */
+    periodStart: string;
     followers: number | null;
-    reach: number | null;
-    engagement: number | null;
     views: number | null;
     note: string | null;
     createdBy: string | null;
@@ -187,9 +185,6 @@ export function buildPostsTable(posts: ExportPostRow[], truncated = false): Expo
         col('url', 'Link bài', 'text', 40),
         col('by', 'Người ghi', 'text', 20),
         col('views', 'Lượt xem', 'number', 11),
-        col('likes', 'Thích', 'number', 9),
-        col('comments', 'Bình luận', 'number', 11),
-        col('shares', 'Chia sẻ', 'number', 10),
         col('note', 'Ghi chú', 'text', 30),
     ];
     const rows: ExportCell[][] = posts.map((p) => [
@@ -200,9 +195,6 @@ export function buildPostsTable(posts: ExportPostRow[], truncated = false): Expo
         text(p.url),
         text(p.createdBy),
         p.views,
-        p.likes,
-        p.comments,
-        p.shares,
         text(p.note),
     ]);
     return table('posts', 'Bài đăng', columns, rows, { truncated });
@@ -211,20 +203,18 @@ export function buildPostsTable(posts: ExportPostRow[], truncated = false): Expo
 export function buildSnapshotsTable(snaps: ExportSnapshotRow[], truncated = false): ExportTable {
     const columns = [
         col('page', 'Page', 'text', 26),
-        col('date', 'Ngày', 'date', 13),
-        col('followers', 'Follower', 'number', 12),
-        col('reach', 'Tiếp cận', 'number', 12),
-        col('engagement', 'Tương tác', 'number', 12),
-        col('views', 'Lượt xem', 'number', 12),
+        col('from', 'Từ ngày', 'date', 13),
+        col('date', 'Đến ngày', 'date', 13),
+        col('followers', 'Follow kênh', 'number', 12),
+        col('views', 'Lượt xem kênh', 'number', 14),
         col('note', 'Ghi chú', 'text', 30),
         col('by', 'Người nhập', 'text', 20),
     ];
     const rows: ExportCell[][] = snaps.map((s) => [
         text(s.pageName),
+        s.periodStart,
         s.date,
         s.followers,
-        s.reach,
-        s.engagement,
         s.views,
         text(s.note),
         text(s.createdBy),

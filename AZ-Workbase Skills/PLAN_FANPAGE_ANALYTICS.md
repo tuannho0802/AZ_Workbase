@@ -6,6 +6,7 @@
 > **Trạng thái:** ĐỀ XUẤT **v1.1 (2026-11-11)** — đã chốt Q1, Q6, Q7 (xem mục 2 và 3.7–3.8); các câu còn lại dùng mặc định. Chưa chạy build/test, chưa đụng DB.
 > **Thay đổi v1.1:** (1) 1 UTM gắn được nhiều Page + quy tắc quy kết khách/tiền chặt chẽ (3.7); (2) xếp hạng chỉ tính người phụ trách có đóng góp dữ liệu, có phân quyền xem (3.8); (3) hiện tiền nạp trong báo cáo Page, có phân quyền riêng + tôn trọng ẩn UI `tab:deposits`; (4) thêm 3 permission key, bỏ setting bật/tắt xếp hạng.
 > **Thay đổi v1.2 (2026-11-11, Q10/Q11 đã chốt theo đề xuất):** thêm **Lead (khách hàng) nhập thủ công + tạo từ Ghi chú tiến trình** (mục 15, GĐ5b, Q10–Q11, X28–X32). Đụng tới quy tắc quy kết 3.7 (R2/R5) → đọc mục 15.3 trước khi làm GĐ5.
+> **Thay đổi v1.3 (2026-11-26) — GĐ8 Tinh giản nhập tay:** số liệu kênh chỉ còn **Follow kênh + Lượt xem kênh** (bỏ Reach, Tương tác) và nhập được theo **kỳ** (1 ngày / tuần / tháng / nhiều ngày); bài đăng chỉ giữ **Lượt xem**; cột Follower sửa nhanh ngay trên bảng; bỏ công tắc "Theo dõi". Mục 16 là nguồn sự thật; các mô tả cũ về 4 chỉ số (C1/C4, 5.1-M2, 8.5, 8.6) và `is_active` (3.1) **được thay bằng mục 16** — đọc 16 trước.
 > **Ràng buộc đã chốt:** KHÔNG dùng API Meta/nền tảng khác, KHÔNG có tính năng auto lead *(nghĩa là không tự kéo lead từ Meta/nền tảng; Lead mục 15 do **người dùng chủ động** nhập hoặc tick trong ghi chú, không vi phạm ràng buộc này)*. Mọi số liệu = **nhập tay** hoặc **dữ liệu nội bộ sẵn có** (bài đăng, khách hàng/UTM).
 
 ---
@@ -753,3 +754,92 @@ Hệ quả: R2/R4/R5 và X9 áp dụng trên hàm quy kết **một chỗ** (`fa
 | Người dùng tưởng Lead nhập tay luôn hiện với mọi người xem Page | Trung bình | Nhãn "theo phạm vi dữ liệu của bạn" (X32) |
 | Số thống kê Page đổi sau khi có Lead nhập tay | Trung bình | Q10 + hộp giải thích R-ưu-tiên; test bất biến Σ |
 | `phone` UNIQUE cả bản ghi xoá mềm → "compensating delete" ở X29 làm kẹt SĐT | Trung bình | Dùng đường xoá mềm sẵn có của khách; nếu lỗi ghi chú thật sự xảy ra, SĐT giữ ở thùng rác (Admin khôi phục/xoá cứng) — nêu rõ trong thông báo lỗi |
+
+
+---
+
+## 16. GĐ8 — Tinh giản nhập tay (v1.3, 2026-11-26)
+
+> **Vì sao:** nhập tay có điểm yếu (dễ sai, dễ bỏ sót, càng nhiều ô càng ít người nhập). Hướng đi: **bớt ô, bớt công tắc, cho nhập theo kỳ thay vì từng ngày**. Mục này thay thế mô tả cũ ở C1/C2/C4 (4 chỉ số), 3.1 (`is_active`), 5.1-M2, 8.5, 8.6.
+
+### 16.1. Quyết định
+
+| # | Nội dung | Chốt |
+|---|---|---|
+| T1 | Số liệu kênh | Chỉ **Follow kênh** (`followers`) và **Lượt xem kênh** (`views`). **Bỏ** Reach, Tương tác khỏi entity/API/export/UI |
+| T2 | Kỳ nhập số liệu | **Ngày / Tuần / Tháng / Tuỳ chọn (Từ–Đến)**. Một dòng = 1 kỳ: `Follow` là mốc tại **ngày cuối kỳ**, `Lượt xem` là **tổng cả kỳ** |
+| T3 | Bài đăng | Chỉ giữ **Lượt xem** (nhập tay, NULL = chưa nhập). **Bỏ** Thích/Bình luận/Chia sẻ, bỏ "tổng tương tác". Top bài xếp theo Lượt xem |
+| T4 | Cột Follower ở bảng Page | Có cột **Follower** sửa trực tiếp trên dòng (inline) → ghi số liệu **hôm nay** bằng endpoint sẵn có `PUT /fanpages/:id/snapshots/:today` (cùng `saveRow`, giữ cảnh báo giảm >50% và X24) |
+| T5 | Công tắc "Theo dõi" (`is_active`) | **Bỏ**, kể cả dữ liệu — làm ở **Patch 2** (16.6). "Tạm ngừng" chuyển thành một **Tình trạng Page** chặn (đã có cơ chế `is_blocking`) |
+
+### 16.2. Luật kỳ (hàm thuần `normalizePeriod`, `periodsOverlap` trong `fanpage-metrics.helper.ts`)
+
+| # | Luật | Lý do |
+|---|---|---|
+| K1 | Khoá dòng vẫn là `UNIQUE (fanpage_id, snapshot_date)` với `snapshot_date` = **ngày cuối kỳ**; thêm `period_start DATE NULL` (NULL = kỳ 1 ngày) | Không đổi khoá cũ, dòng cũ giữ nguyên nghĩa; lưới nhập và Drawer vẫn dùng chung `saveRow` (X7) |
+| K2 | `periodStart` bằng ngày cuối hoặc bỏ trống → lưu NULL | Chỉ một cách biểu diễn cho kỳ 1 ngày |
+| K3 | Kỳ nhiều ngày **bắt buộc có Lượt xem**; kỳ ≤ **366 ngày**; ngày đầu ≤ ngày cuối; không ở tương lai (theo ngày cuối) | Follow là mốc, chỉ Lượt xem mới "cộng dồn theo kỳ" |
+| K4 | **Không cho trùng kỳ Lượt xem** trong cùng Page khi ít nhất một trong hai kỳ nhiều ngày → `409 FANPAGE_SNAPSHOT_OVERLAP` (nêu rõ kỳ bị trùng). Dòng chỉ có Follow (không Lượt xem) không tham gia kiểm tra | Chặn cộng đôi lượt xem; vẫn cho nhập Follow hằng ngày song song với Lượt xem theo tuần |
+| K5 | Sửa dòng không gửi `periodStart` → giữ kỳ cũ; gửi `null` → về kỳ 1 ngày; **xoá Lượt xem** thì kỳ cũ cũng bỏ | Tránh dòng "kỳ nhiều ngày không có số" |
+| K6 | Tăng trưởng Follow (chart, `windowGain`, `latestFollowers`) **không đổi** — vẫn lấy mốc theo `snapshot_date` | Không đụng luật 3.6 |
+| K7 | Lượt xem kênh hiển thị **theo kỳ** (không chia đều từng ngày). Chưa có chart Lượt xem trong BE nên chưa cần quy đổi; nếu sau này vẽ chart theo tuần/tháng phải quyết định chia đều theo ngày và ghi chú rõ | Tránh tự bịa số |
+
+### 16.3. Dữ liệu (migration)
+
+| # | Tên | Nội dung | Trạng thái |
+|---|---|---|---|
+| M6 | `AddFanpageSnapshotPeriod` (`1786395000000`) | `fanpage_metric_snapshots.period_start DATE NULL` (`ADD COLUMN IF NOT EXISTS`, `down()` đối xứng). **Chỉ cộng thêm**, không đụng dữ liệu | ✅ Patch 1 |
+| M7 | `SeedFanpagePausedStatusBackfill` *(dự kiến)* | Seed Tình trạng **"Tạm ngừng"** (`is_blocking = 1`, idempotent theo tên) + backfill Page `is_active = 0` chưa lưu trữ và chưa có tình trạng chặn → "Tạm ngừng" (giữ nguyên hành vi: vẫn bị loại khỏi KPI/nhắc việc) | Patch 2 |
+| M8 | `DropFanpageLegacyColumns` *(dự kiến, CHỈ chạy sau khi FE+BE mới đã deploy ổn và **backup**)* | `DROP` `fanpages.is_active`, `fanpage_metric_snapshots.reach/engagement`, `fanpage_posts.likes/comments/shares`. Trước khi drop in ra số dòng có dữ liệu ở từng cột. Dữ liệu cũ **không khôi phục được** từ `down()` (chỉ tạo lại cột rỗng) | Patch 2/3 — cần bạn xác nhận lại |
+
+- Patch 1 **cố ý giữ** các cột cũ trong DB (đã bỏ khỏi entity): thêm `period_start` an toàn, code cũ chưa deploy vẫn chạy được trên DB đã migrate.
+- Không đặt M8 chung đợt với M6: migration thường chạy **trước** deploy, drop sớm sẽ làm code cũ (còn `f.isActive`) lỗi.
+
+### 16.4. Thay đổi API (Patch 1 — BE, đã làm)
+
+| Điểm | Trước | Sau |
+|---|---|---|
+| `PUT /fanpages/:id/snapshots/:date` + `PUT /fanpage-metrics/bulk` (từng dòng) | `followers, reach, engagement, views, note` | `followers, views, note` + **`periodStart?`** (`:date`/`date` = ngày **cuối** kỳ) |
+| Lỗi mới | — | `409 FANPAGE_SNAPSHOT_OVERLAP`; bulk trả `errors[].code = 'OVERLAP'` |
+| `SnapshotView`, `GridRow.current` | có `reach/engagement` | bỏ `reach/engagement`, thêm **`periodStart`** (null = 1 ngày) |
+| `GridRow.previous` | có `reach/engagement` | chỉ `followers, views` |
+| Bài đăng (`POST/PATCH .../posts`, bulk) | `views, likes, comments, shares` | chỉ **`views`** |
+| `GET /fanpages/stats/top-posts` | xếp theo thích+bình luận+chia sẻ; trả `likes/comments/shares/interactions` | xếp theo **`views`**; chỉ trả `views`; "chưa nhập số liệu" = `views IS NULL` |
+| Export Excel | bảng Số liệu: Ngày, Follower, Tiếp cận, Tương tác, Lượt xem; bảng Bài: có Thích/Bình luận/Chia sẻ | bảng Số liệu: **Từ ngày, Đến ngày, Follow kênh, Lượt xem kênh**; bảng Bài: chỉ Lượt xem |
+| Audit `UPSERT_FANPAGE_SNAPSHOT` | snapshot có `reach/engagement` | có `periodStart`, bỏ `reach/engagement` |
+
+> ⚠️ **Thứ tự deploy:** `ValidationPipe` đang `forbidNonWhitelisted` ⇒ **FE cũ còn gửi `reach/engagement/likes/comments/shares` sẽ bị 400**. Phải deploy **BE và FE mới cùng đợt** (hoặc FE trước nếu FE mới đã ngừng gửi các trường này). Chạy migration M6 trước, như thường lệ.
+
+### 16.5. Việc cho FE (Patch FE — chưa làm)
+
+1. **Form/lưới nhập số liệu:** chỉ 2 ô (Follow kênh, Lượt xem kênh) + ghi chú. Thêm bộ chọn **Kỳ**: `Ngày | Tuần | Tháng | Tuỳ chọn` → tính `date` (ngày cuối) và `periodStart` (ngày đầu); Tuần = Thứ Hai→Chủ Nhật (giờ VN), Tháng = 1→cuối tháng; kỳ chưa kết thúc thì kẹp `date` = hôm nay. Chọn kỳ nhiều ngày thì bắt buộc nhập Lượt xem (hiện sẵn thông báo).
+2. **Xử lý `409 FANPAGE_SNAPSHOT_OVERLAP`:** hiện nội dung `message` (đã nêu kỳ trùng), không có nút "Vẫn lưu".
+3. **Bảng danh sách Page:** thêm cột **Follower** (số + chênh lệch + ngày nhập, đã có từ `latestFollowers`) với ô **sửa tại chỗ** → gọi `PUT .../snapshots/<hôm nay>` `{ followers }`; bắt `SUSPICIOUS_DROP` (modal "Vẫn lưu") và STALE như lưới hiện tại; chỉ hiện ô sửa khi có `fanpage_metrics.manage` trên Page đó (dùng flags/`can()`, không hardcode role).
+4. **Drawer Bài đăng:** bỏ ô Thích/Bình luận/Chia sẻ; chỉ còn Lượt xem. Bảng Top bài: bỏ cột tương tác.
+5. **Tab Thống kê / Xuất Excel:** bỏ cột Reach/Tương tác; thêm Từ–Đến ở bảng Số liệu.
+6. `lib/types`, `lib/api/fanpages.api.ts`, `lib/hooks/useFanpages.ts`, `guides-content/fanpage.md`, `PERMISSIONS.md` §2.20: đồng bộ (bỏ trường cũ, thêm `periodStart`, mã lỗi mới).
+
+### 16.6. Bỏ cột "Theo dõi" và dữ liệu của nó (Patch 2 — thiết kế, CHƯA làm)
+
+> **Giả định cần bạn xác nhận:** "cột Theo dõi" = công tắc **Đang theo dõi** (`fanpages.is_active`, 3.1). Nếu ý bạn là cột khác thì báo lại trước khi làm Patch 2.
+
+- **Luật mới (thay 3.1):** `isTracked = archived_at IS NULL AND (health.is_blocking = 0 OR health IS NULL)`. Chỉ còn 2 khái niệm: **Tình trạng Page** (gồm "Tạm ngừng") và **Lưu trữ**.
+- **Backfill trước khi bỏ (M7):** Page đang `is_active = 0` (chưa lưu trữ, chưa có tình trạng chặn) → gán tình trạng **"Tạm ngừng"** để KPI/nhắc việc/Hôm nay **không đổi kết quả** sau khi bỏ cột. Nếu không backfill, các Page đang tạm ngừng sẽ tự "sống lại" và bắn nhắc việc.
+- **Code phải sửa (đã grep):** `fanpage-cadence.helper.ts` (`isTrackedPage`), `fanpage-insights.service.ts`, `fanpage-stats.service.ts`, `fanpage-metrics.service.ts` (`managedPages`), `fanpage-scoped-query.ts` (bộ lọc `isActive`, `ORDER BY f.isActive`, `f.isActive = 1` ở khối reminders), `fanpages.service.ts` (`dto.isActive`, lưu trữ/bỏ lưu trữ không còn ngầm đổi `is_active`), `fanpage-history.service.ts` (sự kiện `tracking` — **giữ đọc** audit cũ nhưng không sinh mới), `dto/fanpage.dto.ts`, entity, spec liên quan. **Không đụng** `fanpage_platforms.is_active` và `users.is_active` (khác nghĩa).
+- **FE:** bỏ công tắc + cột "Theo dõi" + bộ lọc `isActive`; "Tạm ngừng" chọn ở ô **Tình trạng Page**.
+- **Cuối cùng** mới chạy M8 (`DROP COLUMN is_active`) sau khi backup và deploy ổn.
+
+### 16.7. Kiểm thử bắt buộc (Patch 1 đã có)
+
+- `normalizePeriod`: kỳ 1 ngày → NULL; kỳ nhiều ngày hợp lệ; thiếu Lượt xem; đảo ngày; sai ngày; >366 ngày. `periodsOverlap`: chạm biên là trùng, liền kề thì không.
+- `saveRow`: lưu kỳ tuần; `periodStart = date` → NULL; kỳ nhiều ngày thiếu Lượt xem → 400; không gửi `periodStart` giữ kỳ cũ, gửi `null` về 1 ngày; xoá Lượt xem bỏ kỳ; kỳ trùng → 409 `OVERLAP` và không ghi; lưới nhập: dòng trùng báo `OVERLAP` theo từng dòng, dòng khác vẫn lưu.
+- Cập nhật spec cũ: `reach/engagement` → `views`; bỏ `postInteractions`.
+
+### 16.8. Tiến độ
+
+| Hạng mục | Trạng thái |
+|---|---|
+| Patch 1 — BE: bỏ Reach/Tương tác, kỳ số liệu, bài đăng chỉ View, export, M6 | ✅ (tsc sạch; jest `src/modules/fanpages` pass) |
+| Patch FE (16.5) | ⏳ |
+| Patch 2 — bỏ `is_active` (M7, code, FE) | ⏳ chờ xác nhận 16.6 |
+| M8 — DROP cột cũ | ⏳ sau cùng, cần backup + xác nhận |

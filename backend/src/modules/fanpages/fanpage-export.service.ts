@@ -115,9 +115,6 @@ export class FanpageExportService {
             url: p.url,
             createdBy: p.createdBy?.name ?? null,
             views: p.views ?? null,
-            likes: p.likes ?? null,
-            comments: p.comments ?? null,
-            shares: p.shares ?? null,
             note: p.note ?? null,
         }));
 
@@ -129,9 +126,8 @@ export class FanpageExportService {
             snapshots = snapsRes.rows.map((s) => ({
                 pageName: pageName.get(s.fanpageId) ?? '',
                 date: s.snapshotDate,
+                periodStart: s.periodStart ?? s.snapshotDate,
                 followers: s.followers ?? null,
-                reach: s.reach ?? null,
-                engagement: s.engagement ?? null,
                 views: s.views ?? null,
                 note: s.note ?? null,
                 createdBy: s.createdBy?.name ?? null,

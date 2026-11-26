@@ -39,18 +39,10 @@ export class FanpagePost {
     @Column({ type: 'text', nullable: true })
     note: string | null;
 
-    // Số liệu từng bài (C4) - nhập tay, NULL = chưa nhập (khác 0). `metricsUpdatedAt` = lần cuối sửa 1 trong 4 số này.
+    // Số liệu bài (C4) - CHỈ giữ lượt xem (nhập tay, NULL = chưa nhập, khác 0). `metricsUpdatedAt` = lần cuối sửa số này.
+    // Cột `likes`/`comments`/`shares` cũ vẫn còn trong DB (nullable), đã bỏ khỏi entity/API - DROP ở migration riêng (PLAN GĐ8).
     @Column({ type: 'int', unsigned: true, nullable: true, default: null })
     views: number | null;
-
-    @Column({ type: 'int', unsigned: true, nullable: true, default: null })
-    likes: number | null;
-
-    @Column({ type: 'int', unsigned: true, nullable: true, default: null })
-    comments: number | null;
-
-    @Column({ type: 'int', unsigned: true, nullable: true, default: null })
-    shares: number | null;
 
     @Column({ name: 'metrics_updated_at', type: 'datetime', precision: 6, nullable: true, default: null })
     metricsUpdatedAt: Date | null;

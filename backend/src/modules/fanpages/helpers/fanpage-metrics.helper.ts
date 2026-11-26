@@ -6,7 +6,7 @@ import { weekEndOf, weekStartOf } from './fanpage-cadence.helper';
  * Mọi ngày là chuỗi `YYYY-MM-DD` giờ VN; "hôm nay" do NGƯỜI GỌI truyền vào. Cấm `new Date()` ở đây (lệch múi giờ).
  */
 
-export const METRIC_KEYS = ['followers', 'reach', 'engagement', 'views'] as const;
+export const METRIC_KEYS = ['followers', 'views'] as const;
 export type MetricKey = (typeof METRIC_KEYS)[number];
 
 /** Trần giá trị 1 chỉ số (cột INT UNSIGNED tối đa ~4,29 tỷ; chặn sớm số vô lý do gõ nhầm). */
@@ -68,10 +68,31 @@ export const pickGrowthGroupBy = (from: string, to: string): GrowthGroupBy =>
 
 export interface MetricInput {
     followers?: number | null;
-    reach?: number | null;
-    engagement?: number | null;
     views?: number | null;
 }
+
+/** Kỳ `views` dài tối đa (ngày) - cùng trần với kỳ thống kê. */
+export const METRIC_MAX_PERIOD_DAYS = 366;
+
+/**
+ * Chuẩn hoá kỳ của dòng số liệu. `periodStart` null/undefined/bằng `date` = kỳ 1 ngày -> trả null (lưu NULL).
+ * Kỳ nhiều ngày CHỈ có nghĩa với `views` (follower là mốc tại ngày cuối kỳ) -> bắt buộc có `views`.
+ */
+export function normalizePeriod(
+    date: string,
+    periodStart: string | null | undefined,
+    hasViews: boolean,
+): { ok: true; periodStart: string | null } | { ok: false; message: string } {
+    if (periodStart == null || periodStart === date) return { ok: true, periodStart: null };
+    if (!isValidDateStr(periodStart)) return { ok: false, message: 'Ngày bắt đầu kỳ không hợp lệ' };
+    if (periodStart > date) return { ok: false, message: '"Từ ngày" phải trước hoặc bằng ngày cuối kỳ' };
+    if (spanDays(periodStart, date) > METRIC_MAX_PERIOD_DAYS) return { ok: false, message: `Kỳ tối đa ${METRIC_MAX_PERIOD_DAYS} ngày` };
+    if (!hasViews) return { ok: false, message: 'Kỳ nhiều ngày chỉ dùng cho Lượt xem — hãy nhập Lượt xem hoặc chọn kỳ 1 ngày' };
+    return { ok: true, periodStart };
+}
+
+/** Hai kỳ [aStart,aEnd] và [bStart,bEnd] có chung ngày nào không (ngày là 'YYYY-MM-DD'). */
+export const periodsOverlap = (aStart: string, aEnd: string, bStart: string, bEnd: string): boolean => aStart <= bEnd && bStart <= aEnd;
 
 /** Có ít nhất 1 chỉ số có giá trị (PLAN 6.4: snapshot rỗng hoàn toàn là vô nghĩa). */
 export const hasAnyMetric = (m: MetricInput): boolean => METRIC_KEYS.some((k) => m[k] != null);
@@ -270,7 +291,3 @@ export function buildHeatmap(rows: ReadonlyArray<{ date: string; count: number }
     }
     return { from, to, weeks: w, cells };
 }
-
-/** Tổng tương tác 1 bài = like + comment + share (bỏ view; chỉ cộng số đã nhập). */
-export const postInteractions = (p: { likes: number | null; comments: number | null; shares: number | null }): number =>
-    (p.likes ?? 0) + (p.comments ?? 0) + (p.shares ?? 0);

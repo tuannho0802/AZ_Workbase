@@ -21,6 +21,8 @@ import {
     isSuspiciousDrop,
     isValidMonth,
     latestFollowerMetric,
+    normalizePeriod,
+    periodsOverlap,
     monthEnd,
     monthStart,
     validateSnapshot,
@@ -43,9 +45,9 @@ export interface SnapshotView {
     fanpageId: number;
     snapshotDate: string;
     followers: number | null;
-    reach: number | null;
-    engagement: number | null;
     views: number | null;
+    /** Ngày đầu kỳ `views`; null = kỳ 1 ngày (= snapshotDate). `snapshotDate` luôn là ngày CUỐI kỳ. */
+    periodStart: string | null;
     note: string | null;
     createdBy: { id: number; name: string } | null;
     updatedBy: { id: number; name: string } | null;
@@ -59,12 +61,12 @@ export interface GridRow {
     url: string;
     platform: { id: number; name: string; color: string };
     /** Dòng đúng ngày đang nhập (nếu đã có) - FE gửi lại `updatedAt` làm `expectedUpdatedAt` khi lưu (X24). */
-    current: Pick<SnapshotView, 'followers' | 'reach' | 'engagement' | 'views' | 'note' | 'updatedAt'> | null;
+    current: Pick<SnapshotView, 'followers' | 'views' | 'periodStart' | 'note' | 'updatedAt'> | null;
     /** Lần nhập gần nhất TRƯỚC ngày đang nhập (hiện mờ cạnh ô để so sánh). */
-    previous: (Pick<SnapshotView, 'followers' | 'reach' | 'engagement' | 'views'> & { date: string }) | null;
+    previous: (Pick<SnapshotView, 'followers' | 'views'> & { date: string }) | null;
 }
 
-export type SaveErrorCode = 'INVALID' | 'STALE' | 'SUSPICIOUS_DROP';
+export type SaveErrorCode = 'INVALID' | 'STALE' | 'SUSPICIOUS_DROP' | 'OVERLAP';
 
 export interface BulkRowError {
     fanpageId: number;
@@ -199,6 +201,9 @@ export class FanpageMetricsService {
             if (result.code === 'STALE') {
                 throw new ConflictException({ code: 'FANPAGE_SNAPSHOT_STALE', message: result.message, currentUpdatedAt: result.currentUpdatedAt ?? null });
             }
+            if (result.code === 'OVERLAP') {
+                throw new ConflictException({ code: 'FANPAGE_SNAPSHOT_OVERLAP', message: result.message });
+            }
             if (result.code === 'SUSPICIOUS_DROP') {
                 throw new ConflictException({ code: 'FANPAGE_SNAPSHOT_SUSPICIOUS_DROP', message: result.message });
             }
@@ -239,7 +244,7 @@ export class FanpageMetricsService {
                     url: p.url,
                     platform: { id: p.platform.id, name: p.platform.name, color: p.platform.color },
                     current: cur
-                        ? { followers: cur.followers, reach: cur.reach, engagement: cur.engagement, views: cur.views, note: cur.note, updatedAt: cur.updatedAt }
+                        ? { followers: cur.followers, views: cur.views, periodStart: cur.periodStart ?? null, note: cur.note, updatedAt: cur.updatedAt }
                         : null,
                     previous: previous.get(p.id) ?? null,
                 };
@@ -365,7 +370,7 @@ export class FanpageMetricsService {
             const marks = batch.map(() => '?').join(',');
             const rows = (await this.repo.query(
                 `SELECT t.fanpage_id AS fanpageId, DATE_FORMAT(t.snapshot_date, '%Y-%m-%d') AS d,
-                        t.followers, t.reach, t.engagement, t.views
+                        t.followers, t.views
                  FROM (
                    SELECT s.*, ROW_NUMBER() OVER (PARTITION BY s.fanpage_id ORDER BY s.snapshot_date DESC) AS rn
                    FROM fanpage_metric_snapshots s
@@ -375,10 +380,29 @@ export class FanpageMetricsService {
             )) as Array<{ fanpageId: number | string; d: string } & Record<MetricKey, number | string | null>>;
             const n = (v: number | string | null) => (v == null ? null : Number(v));
             for (const r of rows) {
-                out.set(Number(r.fanpageId), { date: r.d, followers: n(r.followers), reach: n(r.reach), engagement: n(r.engagement), views: n(r.views) });
+                out.set(Number(r.fanpageId), { date: r.d, followers: n(r.followers), views: n(r.views) });
             }
         }
         return out;
+    }
+
+    /**
+     * Lượt xem kỳ [start, end] có trùng kỳ đã nhập khác của Page không (cộng đôi lượt xem). Dòng cùng ngày cuối (= chính dòng đang upsert) bỏ qua.
+     * Chỉ coi là trùng khi ÍT NHẤT 1 trong 2 kỳ nhiều ngày - nhiều dòng 1 ngày khác ngày thì tất nhiên không trùng, 2 dòng 1 ngày cùng ngày là cùng dòng.
+     * Trả thông báo lỗi tiếng Việt nếu trùng, null nếu ổn.
+     */
+    private async findPeriodOverlap(fanpageId: number, start: string, end: string): Promise<string | null> {
+        const rows = (await this.repo.query(
+            `SELECT DATE_FORMAT(snapshot_date, '%Y-%m-%d') AS e, DATE_FORMAT(COALESCE(period_start, snapshot_date), '%Y-%m-%d') AS s
+             FROM fanpage_metric_snapshots
+             WHERE fanpage_id = ? AND views IS NOT NULL AND snapshot_date <> ? AND snapshot_date >= ? AND COALESCE(period_start, snapshot_date) <= ?
+             ORDER BY snapshot_date LIMIT 5`,
+            [fanpageId, end, start, end],
+        )) as Array<{ s: string; e: string }>;
+        const hit = rows.find((r) => periodsOverlap(start, end, r.s, r.e) && (start !== end || r.s !== r.e));
+        if (!hit) return null;
+        const fmt = (d: string) => d.split('-').reverse().join('/');
+        return `Kỳ ${fmt(start)}–${fmt(end)} trùng kỳ Lượt xem đã nhập ${fmt(hit.s)}–${fmt(hit.e)} — sẽ bị cộng đôi. Sửa hoặc xoá dòng đó trước.`;
     }
 
     /** Followers của lần nhập gần nhất TRƯỚC `date` (để cảnh báo giảm >50%). */
@@ -396,9 +420,8 @@ export class FanpageMetricsService {
             fanpageId: r.fanpageId,
             snapshotDate: r.snapshotDate,
             followers: r.followers,
-            reach: r.reach,
-            engagement: r.engagement,
             views: r.views,
+            periodStart: r.periodStart ?? null,
             note: r.note,
         };
     }
@@ -423,7 +446,7 @@ export class FanpageMetricsService {
     private async saveRow(
         fanpageId: number,
         date: string,
-        input: MetricValuesDto & { expectedUpdatedAt?: string | null; confirmDrop?: boolean },
+        input: MetricValuesDto & { periodStart?: string | null; expectedUpdatedAt?: string | null; confirmDrop?: boolean },
         user: FanpageCaller,
         retried = false,
     ): Promise<SaveResult> {
@@ -444,7 +467,16 @@ export class FanpageMetricsService {
         if (error) return { ok: false, code: 'INVALID', message: error };
         const note = input.note !== undefined ? blankToNull(input.note) : (existing?.note ?? null);
 
-        // Chỉ cảnh báo khi followers THỰC SỰ được gửi lên lần này (không nhắc lại khi chỉ sửa ghi chú/reach).
+        // Kỳ của Lượt xem: undefined = giữ kỳ cũ; null/bằng ngày cuối = kỳ 1 ngày. Xoá Lượt xem (null) thì kỳ cũ cũng bỏ (không còn ý nghĩa).
+        const wantedStart = input.periodStart !== undefined ? input.periodStart : (merged.views != null ? (existing?.periodStart ?? null) : null);
+        const period = normalizePeriod(date, wantedStart, merged.views != null);
+        if (!period.ok) return { ok: false, code: 'INVALID', message: period.message };
+        if (merged.views != null) {
+            const clash = await this.findPeriodOverlap(fanpageId, period.periodStart ?? date, date);
+            if (clash) return { ok: false, code: 'OVERLAP', message: clash };
+        }
+
+        // Chỉ cảnh báo khi followers THỰC SỰ được gửi lên lần này (không nhắc lại khi chỉ sửa ghi chú/lượt xem).
         if (!input.confirmDrop && input.followers != null) {
             const prev = await this.previousFollowers(fanpageId, date);
             if (isSuspiciousDrop(prev, input.followers)) {
@@ -456,8 +488,8 @@ export class FanpageMetricsService {
         try {
             const saved = await this.repo.save(
                 existing
-                    ? Object.assign(existing, { ...merged, note, updatedById: user.id })
-                    : this.repo.create({ fanpageId, snapshotDate: date, ...merged, note, createdById: user.id, updatedById: user.id }),
+                    ? Object.assign(existing, { ...merged, periodStart: period.periodStart, note, updatedById: user.id })
+                    : this.repo.create({ fanpageId, snapshotDate: date, ...merged, periodStart: period.periodStart, note, createdById: user.id, updatedById: user.id }),
             );
             this.auditService.logActionAsync(user.id, 'UPSERT_FANPAGE_SNAPSHOT', 'fanpage_snapshot', saved.id, before, this.auditShape(saved));
             return { ok: true, id: saved.id, updatedAt: saved.updatedAt };
