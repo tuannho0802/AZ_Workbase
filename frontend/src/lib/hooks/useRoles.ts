@@ -8,6 +8,7 @@ import {
     UpdateRolePermissionsPayload,
     DepartmentOverride,
     PositionOverride,
+    CopyPositionOverrideTarget,
 } from '../types/roles.types';
 
 const ROLES_KEY = ['roles'];
@@ -191,5 +192,18 @@ export const useDeletePositionOverride = (roleId: number) => {
     return useMutation({
         mutationFn: (positionId: number) => rolesApi.deletePositionOverride(roleId, positionId),
         onSuccess: invalidate,
+    });
+};
+
+/** Chép override Vị trí sang các (Role, Vị trí) đích - invalidate override của MỌI role (đích có thể khác role nguồn). */
+export const useCopyPositionOverride = (roleId: number) => {
+    const queryClient = useQueryClient();
+    return useMutation({
+        mutationFn: ({ positionId, targets }: { positionId: number; targets: CopyPositionOverrideTarget[] }) =>
+            rolesApi.copyPositionOverride(roleId, positionId, targets),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['role-position-overrides'] });
+            queryClient.invalidateQueries({ queryKey: MY_PERMISSIONS_KEY });
+        },
     });
 };

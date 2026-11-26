@@ -8,6 +8,8 @@ import {
   UpdateRolePermissionsPayload,
   DepartmentOverride,
   PositionOverride,
+  CopyPositionOverrideTarget,
+  CopyPositionOverrideResult,
 } from '../types/roles.types';
 
 export interface RoleColor {
@@ -131,6 +133,19 @@ export const rolesApi = {
   ): Promise<{ success: true }> => {
     const response = await axiosInstance.delete(
       `/roles/${roleId}/position-overrides/${positionId}`,
+    );
+    return response.data;
+  },
+
+  /** Khớp POST /roles/:id/position-overrides/:positionId/copy - chép override sang các (Role, Vị trí) đích, thay thế đích cũ. */
+  copyPositionOverride: async (
+    roleId: number,
+    positionId: number,
+    targets: CopyPositionOverrideTarget[],
+  ): Promise<CopyPositionOverrideResult> => {
+    const response = await axiosInstance.post<CopyPositionOverrideResult>(
+      `/roles/${roleId}/position-overrides/${positionId}/copy`,
+      { targets },
     );
     return response.data;
   },

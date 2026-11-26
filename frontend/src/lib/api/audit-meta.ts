@@ -134,6 +134,7 @@ export const ACTION_META: Record<string, ActionMeta> = {
   DELETE_ROLE_DEPARTMENT_OVERRIDE: m('Xóa quyền riêng theo phòng ban', 'red', 'permission'),
   SET_ROLE_POSITION_OVERRIDE: m('Đặt quyền riêng theo vị trí', 'geekblue', 'permission'),
   DELETE_ROLE_POSITION_OVERRIDE: m('Xóa quyền riêng theo vị trí', 'red', 'permission'),
+  COPY_ROLE_POSITION_OVERRIDE: m('Chép quyền riêng theo vị trí sang đích khác', 'geekblue', 'permission'),
   SET_ROLE_UI_VISIBILITY: m('Đặt ẩn/hiện dữ liệu theo Role', 'purple', 'permission'),
   DELETE_ROLE_UI_VISIBILITY: m('Đặt lại ẩn/hiện dữ liệu (mặc định)', 'orange', 'permission'),
 

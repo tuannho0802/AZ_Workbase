@@ -8513,3 +8513,19 @@ Now [deploy]
 > - FE không đổi (hook dùng lại endpoint). Phạm vi XEM cũng đổi theo để Task vừa tạo cho phòng mình không biến mất.
 
 ---
+
+## [2026-11-26 20:00] | Chép override Vị trí sang Vị trí/Role khác (tab "Theo Vị trí" trang Phân quyền) | [Status: Success (BE tsc sạch, jest roles 39 test pass; FE tsc không lỗi mới, vitest phan-quyen+lib pass; CHƯA chạy `next build`, chưa thử trên trình duyệt)]
+
+**Actor:** Agent
+**Files Changed:**
+- `backend/src/modules/roles/dto/copy-position-override.dto.ts` (MỚI), `roles.service.ts` (`copyPositionOverride`), `roles.controller.ts` (`POST /roles/:id/position-overrides/:positionId/copy`, `roles.manage`), `roles.service.spec.ts`
+- `frontend/src/lib/api/audit-meta.ts` (nhãn action COPY_ROLE_POSITION_OVERRIDE)
+- `frontend/src/lib/types/roles.types.ts`, `lib/api/roles.api.ts`, `lib/hooks/useRoles.ts` (`useCopyPositionOverride`)
+- `frontend/src/app/(dashboard)/phan-quyen/CopyPositionOverrideModal.tsx` (MỚI, + test), `PositionOverridesPanel.tsx` — nút "Chép sang..." cạnh "Gỡ override"
+
+**Notes:**
+> - Đích = Role × Vị trí đã chọn; override đích bị THAY THẾ hoàn toàn; mỗi đích 1 transaction + audit `SET_ROLE_POSITION_OVERRIDE` riêng, thêm 1 audit `COPY_ROLE_POSITION_OVERRIDE`; 1 đích lỗi không chặn đích khác.
+> - Chép bản ĐÃ LƯU trong DB (không gồm thay đổi chưa bấm Lưu trong ma trận). Chưa làm cho override Phòng ban.
+> - Không có migration.
+
+---

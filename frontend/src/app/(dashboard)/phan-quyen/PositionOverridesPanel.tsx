@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Select, Tag, Space, Typography, Alert, Empty, Spin, Button } from 'antd';
-import { IdcardOutlined, UndoOutlined } from '@ant-design/icons';
+import { CopyOutlined, IdcardOutlined, UndoOutlined } from '@ant-design/icons';
 import { App } from 'antd';
 import { usePositions } from '@/lib/hooks/usePositions';
 import { Position } from '@/lib/api/positions.api';
@@ -13,6 +13,7 @@ import {
 import { RoleWithPermissions, PositionOverride } from '@/lib/types/roles.types';
 import { mergeGlobalWithOverride } from './DepartmentOverridesPanel';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
+import { CopyPositionOverrideModal } from './CopyPositionOverrideModal';
 
 const { Text, Paragraph } = Typography;
 
@@ -52,6 +53,7 @@ export function PositionOverridesPanel({
   const deleteMutation = useDeletePositionOverride(role.id);
 
   const [selectedPositionId, setSelectedPositionId] = useState<number | null>(null);
+  const [copyOpen, setCopyOpen] = useState(false);
 
   if (!canManagePositions) {
     // GET /positions yêu cầu positions.view riêng (khác roles.manage) -
@@ -151,6 +153,10 @@ export function PositionOverridesPanel({
               {positions.find((p) => p.id === selectedPositionId)?.name}
             </Text>
             {selectedOverride && (
+              <Space size={8}>
+              <Button size="small" icon={<CopyOutlined />} onClick={() => setCopyOpen(true)}>
+                Chép sang...
+              </Button>
               <Button
                 size="small"
                 icon={<UndoOutlined />}
@@ -165,9 +171,20 @@ export function PositionOverridesPanel({
               >
                 Gỡ override (dùng lại Toàn cục)
               </Button>
+              </Space>
             )}
           </div>
             {renderEditor(selectedPositionId, mergeGlobalWithOverride(role.permissions, selectedOverride?.permissions ?? []))}
+          {selectedOverride && positions.find((p) => p.id === selectedPositionId) && (
+            <CopyPositionOverrideModal
+              open={copyOpen}
+              onClose={() => setCopyOpen(false)}
+              sourceRole={role}
+              sourcePosition={positions.find((p) => p.id === selectedPositionId)!}
+              positions={positions}
+              overriddenPositionIds={overrides.map((o) => o.positionId)}
+            />
+          )}
         </>
       ) : (
         <Empty description="Chọn 1 Vị trí ở trên để xem/sửa override" />

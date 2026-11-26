@@ -87,6 +87,16 @@ export interface PositionOverride {
   permissions: RolePermissionEntry[];
 }
 
+/** Khớp response POST /roles/:id/position-overrides/:positionId/copy (roles.service.ts#copyPositionOverride). */
+export interface CopyPositionOverrideTarget {
+  roleId: number;
+  positionId: number;
+}
+export interface CopyPositionOverrideResult {
+  permissionCount: number;
+  results: Array<CopyPositionOverrideTarget & { success: boolean; count?: number; message?: string }>;
+}
+
 /**
  * Quyền của CHÍNH người dùng hiện tại - key = permission.key (vd
  * "customers.assign"), value = scope ('own'/'department'/'all') hoặc null

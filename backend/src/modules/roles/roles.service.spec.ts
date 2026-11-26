@@ -548,6 +548,75 @@ describe('RolesService', () => {
       ]);
     });
 
+    describe('copyPositionOverride', () => {
+      const sourceRows = [
+        { permission: { key: 'customers.view' }, scope: 'own' },
+        { permission: { key: 'customers.edit' }, scope: PermissionScope.NONE },
+        { permission: { key: 'field:sales_assignment' }, scope: null },
+      ];
+
+      beforeEach(() => {
+        mockRoleRepo.findOneBy.mockImplementation(({ id }: any) => Promise.resolve({ id, code: `role${id}` }));
+        mockPositionRepo.findOneBy.mockImplementation(({ id }: any) => Promise.resolve({ id }));
+        mockRolePermissionRepo.find.mockResolvedValue(sourceRows);
+        mockQueryRunner.manager.find.mockResolvedValue([
+          { id: 10, key: 'customers.view', supportsScope: true },
+          { id: 11, key: 'customers.edit', supportsScope: true },
+          { id: 12, key: 'field:sales_assignment', supportsScope: false },
+        ]);
+      });
+
+      it('chép nguyên văn permissionKey + scope (kể cả none/null) sang từng đích, thay thế đích cũ', async () => {
+        const res = await service.copyPositionOverride(
+          1, 3,
+          { targets: [{ roleId: 1, positionId: 4 }, { roleId: 2, positionId: 3 }] },
+          99,
+        );
+
+        expect(res.permissionCount).toBe(3);
+        expect(res.results).toEqual([
+          { roleId: 1, positionId: 4, success: true, count: 3 },
+          { roleId: 2, positionId: 3, success: true, count: 3 },
+        ]);
+        expect(mockQueryRunner.manager.delete).toHaveBeenCalledWith(RolePermission, { roleId: 1, positionId: 4 });
+        expect(mockQueryRunner.manager.delete).toHaveBeenCalledWith(RolePermission, { roleId: 2, positionId: 3 });
+        expect(mockQueryRunner.manager.save).toHaveBeenCalledWith([
+          expect.objectContaining({ roleId: 2, positionId: 3, departmentId: null, permissionId: 10, scope: 'own' }),
+          expect.objectContaining({ roleId: 2, positionId: 3, departmentId: null, permissionId: 11, scope: PermissionScope.NONE }),
+          expect.objectContaining({ roleId: 2, positionId: 3, departmentId: null, permissionId: 12, scope: null }),
+        ]);
+        expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('role1', undefined, 4);
+        expect(mockPermissionsService.invalidate).toHaveBeenCalledWith('role2', undefined, 3);
+      });
+
+      it('báo lỗi nếu nguồn chưa có override', async () => {
+        mockRolePermissionRepo.find.mockResolvedValue([]);
+        await expect(
+          service.copyPositionOverride(1, 3, { targets: [{ roleId: 1, positionId: 4 }] }),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('báo lỗi nếu mọi đích đều trùng nguồn; bỏ đích trùng lặp', async () => {
+        await expect(
+          service.copyPositionOverride(1, 3, { targets: [{ roleId: 1, positionId: 3 }] }),
+        ).rejects.toThrow(BadRequestException);
+
+        const res = await service.copyPositionOverride(1, 3, {
+          targets: [{ roleId: 1, positionId: 4 }, { roleId: 1, positionId: 4 }, { roleId: 1, positionId: 3 }],
+        });
+        expect(res.results).toHaveLength(1);
+      });
+
+      it('1 đích lỗi (Vị trí không tồn tại) không chặn đích còn lại', async () => {
+        mockPositionRepo.findOneBy.mockImplementation(({ id }: any) => Promise.resolve(id === 999 ? null : { id }));
+        const res = await service.copyPositionOverride(1, 3, {
+          targets: [{ roleId: 1, positionId: 999 }, { roleId: 1, positionId: 4 }],
+        });
+        expect(res.results[0]).toEqual(expect.objectContaining({ positionId: 999, success: false }));
+        expect(res.results[1]).toEqual(expect.objectContaining({ positionId: 4, success: true }));
+      });
+    });
+
     it('deletePositionOverride -> xoá thành công, invalidate cache cho vị trí đó', async () => {
       mockRoleRepo.findOneBy.mockResolvedValue({ id: 1, code: 'employee' });
       await service.deletePositionOverride(1, 3);

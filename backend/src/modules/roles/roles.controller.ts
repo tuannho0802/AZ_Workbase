@@ -15,6 +15,7 @@ import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
+import { CopyPositionOverrideDto } from './dto/copy-position-override.dto';
 import { UpdateRolePermissionsDto } from './dto/update-role-permissions.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -148,6 +149,18 @@ export class RolesController {
     @GetUser() user: any,
   ) {
     return this.rolesService.updatePositionOverride(roleId, positionId, dto, user.id);
+  }
+
+  @Post('roles/:id/position-overrides/:positionId/copy')
+  @RequirePermission('roles.manage')
+  @ApiOperation({ summary: 'Chép override của (Role, Vị trí) này sang các (Role, Vị trí) đích - thay thế override đã có của đích' })
+  copyPositionOverride(
+    @Param('id', ParseIntPipe) roleId: number,
+    @Param('positionId', ParseIntPipe) positionId: number,
+    @Body() dto: CopyPositionOverrideDto,
+    @GetUser() user: any,
+  ) {
+    return this.rolesService.copyPositionOverride(roleId, positionId, dto, user.id);
   }
 
   @Delete('roles/:id/position-overrides/:positionId')
