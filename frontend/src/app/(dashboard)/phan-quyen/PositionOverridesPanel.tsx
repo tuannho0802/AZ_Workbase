@@ -11,9 +11,9 @@ import {
   useDeletePositionOverride,
 } from '@/lib/hooks/useRoles';
 import { RoleWithPermissions, PositionOverride } from '@/lib/types/roles.types';
-import { mergeGlobalWithOverride } from './DepartmentOverridesPanel';
+import { mergeGlobalWithOverride, OverrideCopyDraft } from './override-utils';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
-import { CopyPositionOverrideModal } from './CopyPositionOverrideModal';
+import { CopyOverrideModal } from './CopyOverrideModal';
 
 const { Text, Paragraph } = Typography;
 
@@ -45,7 +45,12 @@ export function PositionOverridesPanel({
   canManagePositions: boolean;
   /** Render UI chỉnh quyền dùng lại nguyên `RolePermissionsEditor` của cha -
    * nhận vào để tránh vòng phụ thuộc import giữa 2 file. */
-  renderEditor: (positionId: number, initialPermissions: PositionOverride['permissions']) => React.ReactNode;
+  renderEditor: (
+    positionId: number,
+    initialPermissions: PositionOverride['permissions'],
+    /** Có giá trị khi bảng đang mở từ bản nháp "Chép từ..." (chưa lưu). */
+    draft?: { version: number; sourceLabel: string },
+  ) => React.ReactNode;
 }) {
   const { message } = App.useApp();
   const { positions, isLoading: loadingPositions } = usePositions();
@@ -54,6 +59,9 @@ export function PositionOverridesPanel({
 
   const [selectedPositionId, setSelectedPositionId] = useState<number | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
+  // Bản nháp "Chép từ..." - chỉ trong state, chưa ghi DB. Gắn với 1 Vị trí đích;
+  // đổi Vị trí đang xem thì bản nháp không còn áp dụng (activeDraft = undefined).
+  const [draft, setDraft] = useState<OverrideCopyDraft | null>(null);
 
   if (!canManagePositions) {
     // GET /positions yêu cầu positions.view riêng (khác roles.manage) -
@@ -70,6 +78,8 @@ export function PositionOverridesPanel({
 
   const overrideMap = new Map(overrides.map((o) => [o.positionId, o]));
   const selectedOverride = selectedPositionId ? overrideMap.get(selectedPositionId) : undefined;
+  const activeDraft = draft && draft.entityId === selectedPositionId ? draft : undefined;
+  const selectedPosition = positions.find((p) => p.id === selectedPositionId);
 
   // Render Tag màu Vị trí (+ Tag Phòng ban đi kèm nếu có, cùng màu thật của
   // từng entity qua `resolveEntityColor`) cho dropdown - đồng bộ với pattern
@@ -152,37 +162,47 @@ export function PositionOverridesPanel({
             <Text strong>
               {positions.find((p) => p.id === selectedPositionId)?.name}
             </Text>
-            {selectedOverride && (
-              <Space size={8}>
+            <Space size={8}>
               <Button size="small" icon={<CopyOutlined />} onClick={() => setCopyOpen(true)}>
-                Chép sang...
+                Chép từ...
               </Button>
-              <Button
-                size="small"
-                icon={<UndoOutlined />}
-                loading={deleteMutation.isPending}
-                onClick={() =>
-                  deleteMutation.mutate(selectedPositionId, {
-                    onSuccess: () => message.success('Đã gỡ override - Vị trí quay lại dùng ma trận Toàn cục'),
-                    onError: (err: any) =>
-                      message.error(err?.response?.data?.message || 'Gỡ override thất bại'),
-                  })
-                }
-              >
-                Gỡ override (dùng lại Toàn cục)
-              </Button>
-              </Space>
-            )}
+              {selectedOverride && (
+                <Button
+                  size="small"
+                  icon={<UndoOutlined />}
+                  loading={deleteMutation.isPending}
+                  onClick={() =>
+                    deleteMutation.mutate(selectedPositionId, {
+                      onSuccess: () => message.success('Đã gỡ override - Vị trí quay lại dùng ma trận Toàn cục'),
+                      onError: (err: any) =>
+                        message.error(err?.response?.data?.message || 'Gỡ override thất bại'),
+                    })
+                  }
+                >
+                  Gỡ override (dùng lại Toàn cục)
+                </Button>
+              )}
+            </Space>
           </div>
-            {renderEditor(selectedPositionId, mergeGlobalWithOverride(role.permissions, selectedOverride?.permissions ?? []))}
-          {selectedOverride && positions.find((p) => p.id === selectedPositionId) && (
-            <CopyPositionOverrideModal
+          {renderEditor(
+            selectedPositionId,
+            activeDraft
+              ? activeDraft.permissions
+              : mergeGlobalWithOverride(role.permissions, selectedOverride?.permissions ?? []),
+            activeDraft && { version: activeDraft.version, sourceLabel: activeDraft.sourceLabel },
+          )}
+          {selectedPosition && (
+            <CopyOverrideModal
               open={copyOpen}
               onClose={() => setCopyOpen(false)}
-              sourceRole={role}
-              sourcePosition={positions.find((p) => p.id === selectedPositionId)!}
-              positions={positions}
-              overriddenPositionIds={overrides.map((o) => o.positionId)}
+              kind="position"
+              targetRole={role}
+              targetName={selectedPosition.name}
+              targetEntityId={selectedPosition.id}
+              entities={positions}
+              onApply={(permissions, sourceLabel) =>
+                setDraft({ entityId: selectedPosition.id, permissions, sourceLabel, version: (draft?.version ?? 0) + 1 })
+              }
             />
           )}
         </>

@@ -15,7 +15,6 @@ import { Role } from '../../common/enums/role.enum';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { UpdateRolePermissionsDto } from './dto/update-role-permissions.dto';
-import { CopyPositionOverrideDto } from './dto/copy-position-override.dto';
 import { PermissionsService } from '../permissions/permissions.service';
 import { AuditService } from '../audit/audit.service';
 
@@ -521,66 +520,6 @@ export class RolesService {
     } finally {
       await queryRunner.release();
     }
-  }
-
-  /**
-   * Chép override của (Role nguồn, Vị trí nguồn) sang NHIỀU đích (Role, Vị trí) - dùng để setup nhanh.
-   * Mỗi đích đi qua `updatePositionOverride()` (transaction + khoá + invalidate cache + audit riêng) nên
-   * đích đã có override sẽ bị THAY THẾ hoàn toàn. Mỗi đích độc lập: 1 đích lỗi không chặn đích khác,
-   * kết quả trả về theo từng đích. Chép NGUYÊN VĂN permissionKey + scope (kể cả 'none').
-   */
-  async copyPositionOverride(
-    sourceRoleId: number,
-    sourcePositionId: number,
-    dto: CopyPositionOverrideDto,
-    callerId?: number,
-  ) {
-    const sourceRole = await this.roleRepo.findOneBy({ id: sourceRoleId });
-    if (!sourceRole) throw new NotFoundException('Role nguồn không tồn tại');
-
-    const sourceRows = await this.rolePermissionRepo.find({
-      where: { roleId: sourceRoleId, positionId: sourcePositionId, departmentId: IsNull() },
-      relations: ['permission'],
-    });
-    if (sourceRows.length === 0) {
-      throw new BadRequestException('Vị trí nguồn chưa có override nào để chép');
-    }
-    const permissions = sourceRows.map((r) => ({
-      permissionKey: r.permission.key,
-      scope: (r.scope ?? null) as PermissionScope | null,
-    }));
-
-    // Bỏ đích trùng lặp và chính nguồn (chép vào chính mình vô nghĩa, lại xoá-ghi lại thừa).
-    const seen = new Set<string>();
-    const targets = dto.targets.filter((t) => {
-      const key = `${t.roleId}:${t.positionId}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return !(t.roleId === sourceRoleId && t.positionId === sourcePositionId);
-    });
-    if (targets.length === 0) {
-      throw new BadRequestException('Không có đích hợp lệ (đích không được trùng với nguồn)');
-    }
-
-    const results: Array<{ roleId: number; positionId: number; success: boolean; count?: number; message?: string }> = [];
-    for (const t of targets) {
-      try {
-        const r = await this.updatePositionOverride(t.roleId, t.positionId, { permissions }, callerId);
-        results.push({ roleId: t.roleId, positionId: t.positionId, success: true, count: r.count });
-      } catch (err: any) {
-        results.push({ roleId: t.roleId, positionId: t.positionId, success: false, message: err?.message ?? 'Lỗi không xác định' });
-      }
-    }
-
-    if (callerId) {
-      this.auditService.logActionAsync(callerId, 'COPY_ROLE_POSITION_OVERRIDE', 'role', sourceRoleId, null, {
-        roleCode: sourceRole.code,
-        sourcePositionId,
-        targets: results,
-      });
-    }
-
-    return { permissionCount: permissions.length, results };
   }
 
   async deletePositionOverride(roleId: number, positionId: number, callerId?: number) {

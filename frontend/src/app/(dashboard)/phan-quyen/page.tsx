@@ -156,6 +156,7 @@ function RolePermissionsEditor({
   initialPermissions,
   departmentId,
   positionId,
+  draftSourceLabel,
   onSaved,
 }: {
   role: RoleWithPermissions;
@@ -166,6 +167,8 @@ function RolePermissionsEditor({
     // cả hai (renderEditor của DepartmentOverridesPanel/PositionOverridesPanel
     // chỉ truyền đúng 1 trong 2, xem RolePermissionsDrawer bên dưới).
     positionId?: number;
+  // Có giá trị khi bảng mở từ bản nháp "Chép từ..." - chỉ để hiện cảnh báo CHƯA LƯU.
+  draftSourceLabel?: string;
   onSaved: () => void;
 }) {
   const { message } = App.useApp();
@@ -356,6 +359,16 @@ function RolePermissionsEditor({
         )}
       </div>
 
+      {draftSourceLabel && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 16 }}
+          title={`Bản nháp chép từ "${draftSourceLabel}" - CHƯA LƯU`}
+          description="Kiểm tra, sửa lại các quyền cần khác rồi bấm “Lưu thay đổi” để áp dụng. Đóng hộp hoặc đổi sang mục khác sẽ bỏ bản nháp."
+        />
+      )}
+
       {!canManage && (
         <Alert
           type="info"
@@ -503,9 +516,11 @@ function RolePermissionsDrawer({
             <DepartmentOverridesPanel
               role={role}
               canManageDepartments={canManageDepartments}
-              renderEditor={(departmentId, initialPermissions) => (
+              renderEditor={(departmentId, initialPermissions, draft) => (
                 <RolePermissionsEditor
-                  key={`${role.id}-dept-${departmentId}`}
+                  // draft.version đổi -> remount để `checked` khởi tạo lại từ bản nháp mới.
+                  key={`${role.id}-dept-${departmentId}-${draft?.version ?? 0}`}
+                  draftSourceLabel={draft?.sourceLabel}
                   role={role}
                   canManage={canManage}
                   initialPermissions={initialPermissions}
@@ -518,9 +533,10 @@ function RolePermissionsDrawer({
               <PositionOverridesPanel
                 role={role}
                 canManagePositions={canManagePositions}
-                renderEditor={(positionId, initialPermissions) => (
+                renderEditor={(positionId, initialPermissions, draft) => (
                   <RolePermissionsEditor
-                    key={`${role.id}-pos-${positionId}`}
+                    key={`${role.id}-pos-${positionId}-${draft?.version ?? 0}`}
+                    draftSourceLabel={draft?.sourceLabel}
                     role={role}
                     canManage={canManage}
                     initialPermissions={initialPermissions}

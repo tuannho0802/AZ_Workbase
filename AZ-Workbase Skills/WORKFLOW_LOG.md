@@ -8529,3 +8529,19 @@ Now [deploy]
 > - Không có migration.
 
 ---
+
+## [2026-11-26 21:30] | "Chép từ..." override Vị trí + Phòng ban theo kiểu TEMPLATE (bản nháp, chưa ghi DB) | [Status: Success (BE tsc sạch, jest roles 35 pass; FE tsc không lỗi mới, vitest phan-quyen+audit-meta 8 pass; `next build` compile OK nhưng dừng ở type-check do 2 lỗi CÓ SẴN ở HEAD `layout.mobile.test.tsx(137,193)`; chưa thử trên trình duyệt)]
+
+**Actor:** Agent
+**Files Changed:**
+- GỠ khỏi commit 326c28f: endpoint ghi trực tiếp `POST /roles/:id/position-overrides/:positionId/copy` (`roles.controller.ts`, `roles.service.ts#copyPositionOverride`, `copy-position-override.dto.ts`, spec), nhãn audit `COPY_ROLE_POSITION_OVERRIDE`, `rolesApi.copyPositionOverride`, `useCopyPositionOverride`, type `CopyPosition*` — vì copy không còn ghi DB.
+- `phan-quyen/override-utils.ts` (MỚI + test): `mergeGlobalWithOverride` chuyển từ `DepartmentOverridesPanel` (re-export giữ import cũ), thêm `buildCopyDraftPermissions`, type `OverrideCopyDraft`.
+- `phan-quyen/CopyOverrideModal.tsx` (MỚI, thay `CopyPositionOverrideModal`): chọn Role nguồn + Vị trí/Phòng ban nguồn -> đổ quyền HIỆU LỰC của nguồn vào bảng đích.
+- `PositionOverridesPanel.tsx`, `DepartmentOverridesPanel.tsx`: nút "Chép từ...", state `draft`; `page.tsx`: `renderEditor` nhận thêm `draft`, key gồm `draft.version`, banner "Bản nháp ... CHƯA LƯU".
+
+**Notes:**
+> - Copy = PULL: đứng ở đích (Role + Vị trí/Phòng ban đang mở) -> "Chép từ..." chọn nguồn. Chỉ đổi state `checked` của Editor; chỉ khi bấm "Lưu thay đổi" mới gọi API cũ (PUT override, tự tính diff so với Toàn cục role đích; trùng Toàn cục thì gỡ override).
+> - Chép quyền HIỆU LỰC (Toàn cục role nguồn + override nguồn), không chép override thô. Đổi Vị trí/Phòng ban, đổi tab hoặc đóng Drawer = bỏ bản nháp.
+> - Không có BE mới, không migration.
+
+---

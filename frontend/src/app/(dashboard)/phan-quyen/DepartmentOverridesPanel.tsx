@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Select, Tag, Space, Typography, Alert, Empty, Spin, Button } from 'antd';
-import { BankOutlined, UndoOutlined } from '@ant-design/icons';
+import { BankOutlined, CopyOutlined, UndoOutlined } from '@ant-design/icons';
 import { App } from 'antd';
 import { useDepartments } from '@/lib/hooks/useDepartments';
 import { Department } from '@/lib/api/departments.api';
@@ -10,40 +10,15 @@ import {
   useDepartmentOverrides,
   useDeleteDepartmentOverride,
 } from '@/lib/hooks/useRoles';
-import { RoleWithPermissions, DepartmentOverride, RolePermissionEntry } from '@/lib/types/roles.types';
+import { RoleWithPermissions, DepartmentOverride } from '@/lib/types/roles.types';
+import { mergeGlobalWithOverride, OverrideCopyDraft } from './override-utils';
+import { CopyOverrideModal } from './CopyOverrideModal';
 import { resolveEntityColor } from '@/lib/utils/entityColor';
 
 const { Text, Paragraph } = Typography;
 
-/**
- * Hợp nhất ma trận Toàn cục với override (nếu có) của 1 phòng ban, ra đúng
- * trạng thái HIỆU LỰC để hiển thị lúc mở Editor - FIX bug thật: trước đây
- * Editor override luôn khởi tạo từ mảng override THÔ (`selectedOverride?.
- * permissions ?? []`), nên phòng ban CHƯA override gì thấy TOÀN BỘ checkbox
- * trống trơn dù Toàn cục đang bật đầy đủ - muốn override 1 quyền, Admin
- * buộc phải tự tay tick lại HẾT các quyền Toàn cục khác trong tab Override
- * (hoặc tệ hơn, phải tắt ở Toàn cục trước). Hàm này đảm bảo Editor LUÔN mở
- * ra ở đúng trạng thái "phòng ban này thật sự có quyền gì" (Toàn cục đã áp
- * dụng override, nếu có) - sync 1 chiều Toàn cục -> Override ngay lúc mở,
- * đúng yêu cầu nghiệp vụ.
- */
-export function mergeGlobalWithOverride(
-  globalPermissions: RolePermissionEntry[],
-  overridePermissions: RolePermissionEntry[],
-): RolePermissionEntry[] {
-  const map = new Map<string, RolePermissionEntry['scope']>(
-    globalPermissions.map((p) => [p.permissionKey, p.scope]),
-  );
-  for (const o of overridePermissions) {
-    if (o.scope === 'none') {
-      // Từ chối tường minh - phòng ban KHÔNG có quyền này dù Toàn cục bật.
-      map.delete(o.permissionKey);
-    } else {
-      map.set(o.permissionKey, o.scope);
-    }
-  }
-  return Array.from(map.entries()).map(([permissionKey, scope]) => ({ permissionKey, scope }));
-}
+// Logic hợp nhất đã chuyển sang `override-utils.ts` (dùng chung với modal "Chép từ...") - re-export để import cũ không vỡ.
+export { mergeGlobalWithOverride };
 
 /**
  * Tab "Theo phòng ban" trong Drawer ma trận quyền - CHÍNH LÀ phần bạn yêu
@@ -66,7 +41,12 @@ export function DepartmentOverridesPanel({
   canManageDepartments: boolean;
   /** Render UI chỉnh quyền dùng lại nguyên `RolePermissionsEditor` của cha -
    * nhận vào để tránh vòng phụ thuộc import giữa 2 file. */
-  renderEditor: (departmentId: number, initialPermissions: DepartmentOverride['permissions']) => React.ReactNode;
+  renderEditor: (
+    departmentId: number,
+    initialPermissions: DepartmentOverride['permissions'],
+    /** Có giá trị khi bảng đang mở từ bản nháp "Chép từ..." (chưa lưu). */
+    draft?: { version: number; sourceLabel: string },
+  ) => React.ReactNode;
 }) {
   const { message } = App.useApp();
   const { departments, isLoading: loadingDepartments } = useDepartments();
@@ -74,6 +54,10 @@ export function DepartmentOverridesPanel({
   const deleteMutation = useDeleteDepartmentOverride(role.id);
 
   const [selectedDeptId, setSelectedDeptId] = useState<number | null>(null);
+  const [copyOpen, setCopyOpen] = useState(false);
+  // Bản nháp "Chép từ..." - chỉ trong state, chưa ghi DB. Gắn với 1 phòng ban đích;
+  // đổi phòng ban đang xem thì bản nháp không còn áp dụng (activeDraft = undefined).
+  const [draft, setDraft] = useState<OverrideCopyDraft | null>(null);
 
   if (!canManageDepartments) {
     // GET /departments yêu cầu departments.view riêng (khác roles.manage) -
@@ -90,6 +74,8 @@ export function DepartmentOverridesPanel({
 
   const overrideMap = new Map(overrides.map((o) => [o.departmentId, o]));
   const selectedOverride = selectedDeptId ? overrideMap.get(selectedDeptId) : undefined;
+  const activeDraft = draft && draft.entityId === selectedDeptId ? draft : undefined;
+  const selectedDept = departments.find((d) => d.id === selectedDeptId);
 
   // Render Tag màu (đúng màu thật của phòng ban, xem `resolveEntityColor`) +
   // nhãn "(đang override)" cho từng dòng trong dropdown - đồng bộ với pattern
@@ -171,24 +157,49 @@ export function DepartmentOverridesPanel({
             <Text strong>
               {departments.find((d) => d.id === selectedDeptId)?.name}
             </Text>
-            {selectedOverride && (
-              <Button
-                size="small"
-                icon={<UndoOutlined />}
-                loading={deleteMutation.isPending}
-                onClick={() =>
-                  deleteMutation.mutate(selectedDeptId, {
-                    onSuccess: () => message.success('Đã gỡ override - phòng ban quay lại dùng ma trận Toàn cục'),
-                    onError: (err: any) =>
-                      message.error(err?.response?.data?.message || 'Gỡ override thất bại'),
-                  })
-                }
-              >
-                Gỡ override (dùng lại Toàn cục)
+            <Space size={8}>
+              <Button size="small" icon={<CopyOutlined />} onClick={() => setCopyOpen(true)}>
+                Chép từ...
               </Button>
-            )}
+              {selectedOverride && (
+                <Button
+                  size="small"
+                  icon={<UndoOutlined />}
+                  loading={deleteMutation.isPending}
+                  onClick={() =>
+                    deleteMutation.mutate(selectedDeptId, {
+                      onSuccess: () => message.success('Đã gỡ override - phòng ban quay lại dùng ma trận Toàn cục'),
+                      onError: (err: any) =>
+                        message.error(err?.response?.data?.message || 'Gỡ override thất bại'),
+                    })
+                  }
+                >
+                  Gỡ override (dùng lại Toàn cục)
+                </Button>
+              )}
+            </Space>
           </div>
-            {renderEditor(selectedDeptId, mergeGlobalWithOverride(role.permissions, selectedOverride?.permissions ?? []))}
+          {renderEditor(
+            selectedDeptId,
+            activeDraft
+              ? activeDraft.permissions
+              : mergeGlobalWithOverride(role.permissions, selectedOverride?.permissions ?? []),
+            activeDraft && { version: activeDraft.version, sourceLabel: activeDraft.sourceLabel },
+          )}
+          {selectedDept && (
+            <CopyOverrideModal
+              open={copyOpen}
+              onClose={() => setCopyOpen(false)}
+              kind="department"
+              targetRole={role}
+              targetName={selectedDept.name}
+              targetEntityId={selectedDept.id}
+              entities={departments}
+              onApply={(permissions, sourceLabel) =>
+                setDraft({ entityId: selectedDept.id, permissions, sourceLabel, version: (draft?.version ?? 0) + 1 })
+              }
+            />
+          )}
         </>
       ) : (
         <Empty description="Chọn 1 phòng ban ở trên để xem/sửa override" />
